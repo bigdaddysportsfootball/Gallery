@@ -94,6 +94,13 @@ export default function App() {
           }
           
           setIsScanning(false);
+        } else {
+          // Auto-request on native mount if not yet granted
+          // @ts-ignore
+          const isNative = window.Capacitor || window.cordova || window.androidBridge;
+          if (isNative) {
+            handleGrantInSettings();
+          }
         }
       } catch (err) {
         console.error("Error loading saved state:", err);
@@ -235,6 +242,13 @@ export default function App() {
 
     if (isNative) {
       try {
+        // Attempt to call native permission request if bridge supports it
+        // @ts-ignore
+        if (window.androidBridge && window.androidBridge.requestPermissions) {
+          // @ts-ignore
+          await window.androidBridge.requestPermissions(['photos', 'videos', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO']);
+        }
+
         // @ts-ignore
         if (window.androidBridge && window.androidBridge.getMedia) {
           // @ts-ignore
@@ -266,6 +280,37 @@ export default function App() {
   const handleGrantInSettings = async (e?: React.MouseEvent) => {
     if (e && e.stopPropagation) e.stopPropagation();
     
+    // Check for native bridges to request REAL system permissions
+    // @ts-ignore
+    const isNative = window.Capacitor || window.cordova || window.androidBridge;
+    
+    if (isNative) {
+      try {
+        // Capacitor specific request
+        // @ts-ignore
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Permissions) {
+          // @ts-ignore
+          await window.Capacitor.Plugins.Permissions.request({ name: 'photos' });
+        }
+        
+        // Generic androidBridge request
+        // @ts-ignore
+        if (window.androidBridge && window.androidBridge.requestPermissions) {
+          // @ts-ignore
+          const granted = await window.androidBridge.requestPermissions([
+            'photos', 
+            'videos', 
+            'READ_MEDIA_IMAGES', 
+            'READ_MEDIA_VIDEO',
+            'READ_EXTERNAL_STORAGE'
+          ]);
+          if (!granted) return;
+        }
+      } catch (err) {
+        console.error("Native permission request failed:", err);
+      }
+    }
+
     const newPermission = !hasPermission;
     setHasPermission(newPermission);
     await set('has-permission', newPermission);
@@ -692,15 +737,15 @@ export default function App() {
           <div className="w-24 h-24 bg-orange-500/10 rounded-full flex items-center justify-center mb-8">
             <FolderIcon className="w-12 h-12 text-orange-500" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-4">Access your media</h1>
+          <h1 className="text-2xl font-bold text-white mb-4">Allow Media Access</h1>
           <p className="text-gray-400 mb-8 max-w-sm">
-            To display your photos and videos, PA Gallery needs permission to access your device's storage.
+            PA Gallery needs permission to access your photos and videos. Please grant access in the following system dialog.
           </p>
           <button
             onClick={() => handleGrantInSettings()}
-            className="w-full max-w-xs bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-all active:scale-95"
+            className="w-full max-w-xs bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-orange-500/20"
           >
-            Allow Access
+            Grant System Permission
           </button>
         </div>
       )}
