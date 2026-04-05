@@ -36,6 +36,8 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
+  const [permissionStep, setPermissionStep] = useState<'request' | 'type' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
+  const [selectedAccessType, setSelectedAccessType] = useState<'media' | 'all' | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,7 +96,7 @@ export default function App() {
     setHasPermission(true);
 
     const newMediaFiles: MediaFile[] = [];
-    Array.from(selectedFiles).forEach((file) => {
+    Array.from(selectedFiles).forEach((file: File) => {
       // On mobile, we try to get the path if available, otherwise use 'Media'
       const path = (file as any).webkitRelativePath || '';
       const media = processFile(file, path);
@@ -105,50 +107,55 @@ export default function App() {
   };
 
   const finishScan = (allMedia: MediaFile[]) => {
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 5;
-      setScanProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setFiles(allMedia);
-        setIsScanning(false);
-      }
-    }, 20);
+    setFiles(allMedia);
+    setIsScanning(false);
+    setHasPermission(true);
+    setPermissionStep('granted');
   };
 
-  const performAutoScan = async () => {
+  const handleRequestAllow = () => {
+    setPermissionStep('type');
+  };
+
+  const handleSelectAccess = async (type: 'media' | 'all') => {
+    setSelectedAccessType(type);
+    if (type === 'all') {
+      setPermissionStep('settings');
+    } else {
+      // For media, we just trigger the picker which acts as the "Grant"
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleGrantInSettings = () => {
+    // This simulates the user toggling the slider in Android settings
+    if (selectedAccessType === 'all') {
+      if ('showDirectoryPicker' in window) {
+        handleSelectAccessFinal('all');
+      } else {
+        fileInputRef.current?.click();
+      }
+    }
+  };
+
+  const handleSelectAccessFinal = async (type: 'media' | 'all') => {
     setScanError(null);
     
-    // Detect if we are on a mobile device (Android/iOS)
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-    // 1. Try the advanced Directory Picker ONLY on Desktop
-    if (!isMobile && 'showDirectoryPicker' in window) {
+    if (type === 'all' && 'showDirectoryPicker' in window) {
       try {
         const directoryHandle = await (window as any).showDirectoryPicker();
         setIsScanning(true);
-        setScanProgress(0);
-        setHasPermission(true);
         const allMedia = await scanDirectory(directoryHandle);
         finishScan(allMedia);
-        return;
       } catch (err: any) {
-        console.warn("Advanced picker failed, falling back...", err);
-        // Fall through to file input
-      }
-    }
-
-    // 2. Fallback for Android/Mobile: Trigger the native system picker
-    // This is the most reliable way to get media on an Android APK
-    if (fileInputRef.current) {
-      try {
-        fileInputRef.current.click();
-      } catch (err: any) {
-        setScanError("Could not open system picker: " + err.message);
+        console.warn("Advanced picker failed", err);
+        if (err.name !== 'AbortError') {
+          setScanError("Permission denied by system.");
+        }
+        setPermissionStep('type');
       }
     } else {
-      setScanError("Your device storage access is not supported. Please ensure you are using a modern browser.");
+      fileInputRef.current?.click();
     }
   };
 
@@ -432,31 +439,123 @@ export default function App() {
         />
       </div>
 
-      {/* Permission Overlay (APK Native Bridge Fallback) */}
-      {!hasPermission && !isScanning && files.length === 0 && (
-        <div className="fixed inset-0 z-[120] bg-app-surface flex flex-col items-center justify-center p-8 text-center">
-          <div className="w-24 h-24 bg-app-accent/10 rounded-full flex items-center justify-center mb-6">
-            <FolderIcon size={48} className="text-app-accent" />
-          </div>
-          <h1 className="text-2xl font-bold text-app-text mb-2">Media Gallery</h1>
-          <p className="text-app-text-muted mb-8 max-w-xs">
-            To automatically find your photos and videos across all folders, please grant storage access.
-          </p>
-          
-          {scanError && (
-            <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
-              {scanError}
+      {/* Native Permission Flow Overlay */}
+      {permissionStep !== 'granted' && !isScanning && (
+        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-6 transition-all duration-500">
+          {permissionStep === 'request' && (
+            <div className="bg-app-surface w-full max-w-[320px] rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
+              <div className="w-16 h-16 bg-app-accent/10 rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                <FolderIcon size={32} className="text-app-accent" />
+              </div>
+              <h2 className="text-xl font-bold text-app-text text-center mb-2">
+                Allow Gallery to access photos and videos on this device?
+              </h2>
+              <p className="text-app-text-muted text-sm text-center mb-8">
+                This allows the app to show your photos and videos and keep them organized.
+              </p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={handleRequestAllow}
+                  className="w-full bg-app-accent text-white py-4 rounded-2xl font-bold text-lg active:scale-95 transition-transform"
+                >
+                  Allow
+                </button>
+                <button 
+                  onClick={() => setScanError("Access is required to use the gallery.")}
+                  className="w-full bg-transparent text-app-text-muted py-3 rounded-2xl font-medium"
+                >
+                  Don't allow
+                </button>
+              </div>
             </div>
           )}
 
-          <button 
-            onClick={performAutoScan}
-            className="w-full max-w-xs bg-app-accent text-white py-4 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-transform"
-          >
-            Start Device Scan
-          </button>
+          {permissionStep === 'type' && (
+            <div className="bg-app-surface w-full max-w-[340px] rounded-[2.5rem] overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-500">
+              <div className="p-8 border-b border-app-border bg-app-accent/5">
+                <h2 className="text-2xl font-bold text-app-text">Grant Access</h2>
+                <p className="text-app-text-muted text-sm mt-2">
+                  Select the level of access you want to provide
+                </p>
+              </div>
+              <div className="p-4 flex flex-col gap-3">
+                <button 
+                  onClick={() => handleSelectAccess('media')}
+                  className="flex items-center gap-4 w-full p-5 rounded-3xl hover:bg-app-accent/5 active:bg-app-accent/10 transition-all text-left border border-transparent hover:border-app-accent/20"
+                >
+                  <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                    <FolderIcon size={24} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-lg text-app-text">Photos & Videos</div>
+                    <div className="text-xs text-app-text-muted">Standard media access</div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => handleSelectAccess('all')}
+                  className="flex items-center gap-4 w-full p-5 rounded-3xl hover:bg-app-accent/5 active:bg-app-accent/10 transition-all text-left border border-transparent hover:border-app-accent/20"
+                >
+                  <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center shrink-0">
+                    <FolderIcon size={24} className="text-purple-500" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-lg text-app-text">All Files</div>
+                    <div className="text-xs text-app-text-muted">Full storage management (Recommended)</div>
+                  </div>
+                </button>
+              </div>
+              {scanError && (
+                <div className="px-8 pb-6 text-red-500 text-xs text-center font-medium">
+                  {scanError}
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Hidden input for mobile fallback */}
+          {permissionStep === 'settings' && (
+            <div className="bg-[#f8f9fa] dark:bg-[#121212] w-full h-full sm:max-w-[400px] sm:h-[800px] sm:rounded-[2.5rem] overflow-hidden shadow-2xl animate-in fade-in duration-500 flex flex-col">
+              {/* Android Settings Header Simulation */}
+              <div className="p-6 pt-12 flex items-center gap-4 border-b border-gray-200 dark:border-zinc-800">
+                <button onClick={() => setPermissionStep('type')} className="p-2">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <h2 className="text-xl font-medium text-gray-900 dark:text-white">All files access</h2>
+              </div>
+              
+              <div className="flex-1 p-6">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-app-accent rounded-xl flex items-center justify-center text-white font-bold">G</div>
+                    <div>
+                      <div className="font-medium text-gray-900 dark:text-white text-lg">Gallery</div>
+                      <div className="text-sm text-gray-500">v1.0.0</div>
+                    </div>
+                  </div>
+                  <div 
+                    onClick={handleGrantInSettings}
+                    className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors duration-300 ${hasPermission ? 'bg-app-accent' : 'bg-gray-300 dark:bg-zinc-700'}`}
+                  >
+                    <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                  </div>
+                </div>
+                
+                <div className="space-y-4 text-sm text-gray-600 dark:text-zinc-400 leading-relaxed">
+                  <p>Allow this app to read, modify, and delete all files on this device or any connected storage volumes.</p>
+                  <p>If you allow this, the app can access files that aren't photos or videos, which may include sensitive information.</p>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 dark:border-zinc-800 flex justify-end">
+                <button 
+                  onClick={() => setPermissionStep('type')}
+                  className="px-6 py-2 text-app-accent font-bold"
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+          
           <input 
             type="file"
             ref={fileInputRef}
@@ -468,22 +567,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Scanning Overlay */}
+      {/* Silent Indexing Overlay (No progress bar, just a subtle spinner) */}
       {isScanning && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6">
-          <div className="w-20 h-20 mb-6 relative">
-            <div className="absolute inset-0 border-4 border-app-accent/20 rounded-full"></div>
-            <div 
-              className="absolute inset-0 border-4 border-app-accent rounded-full border-t-transparent animate-spin"
-            ></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-bold">{Math.round(scanProgress)}%</span>
-            </div>
-          </div>
-          <h2 className="text-xl font-bold mb-2">Scanning Device</h2>
-          <p className="text-white/60 text-sm text-center max-w-xs">
-            Searching for new photos and videos in your storage...
-          </p>
+        <div className="fixed inset-0 z-[130] bg-app-bg flex flex-col items-center justify-center p-6">
+          <div className="w-12 h-12 border-4 border-app-accent border-t-transparent rounded-full animate-spin mb-4"></div>
+          <p className="text-app-text-muted font-medium">Indexing media...</p>
         </div>
       )}
 
