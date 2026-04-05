@@ -39,49 +39,7 @@ export default function App() {
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
-
-  // Realistic Simulated Media Generator (Fallback for when FileSystem API is unavailable or not desired for main storage)
-  const generateSystemMedia = (): MediaFile[] => {
-    const folders = [
-      'Camera', 
-      'Screenshots', 
-      'WhatsApp Images', 
-      'WhatsApp Video', 
-      'Instagram', 
-      'Downloads', 
-      'Telegram', 
-      'Facebook', 
-      'Snapchat',
-      'Movies',
-      'Pictures'
-    ];
-    const media: MediaFile[] = [];
-    
-    folders.forEach(folder => {
-      const count = Math.floor(Math.random() * 15) + 10;
-      for (let i = 1; i <= count; i++) {
-        const isVideo = folder.toLowerCase().includes('video') || folder === 'Movies' || Math.random() > 0.9;
-        const id = `system-${folder.toLowerCase().replace(/\s+/g, '-')}-${i}`;
-        const seed = `${folder}-${i}-${Date.now()}`;
-        const date = Date.now() - Math.random() * 10000000000;
-        
-        media.push({
-          id,
-          folderId: folder,
-          name: `${isVideo ? 'VID' : 'IMG'}_${new Date(date).toISOString().slice(0,10).replace(/-/g, '')}_${(i).toString().padStart(6, '0')}.${isVideo ? 'mp4' : 'jpg'}`,
-          type: isVideo ? 'video' : 'image',
-          url: `https://picsum.photos/seed/${seed}/1200/800`,
-          thumbnailUrl: isVideo ? `https://picsum.photos/seed/${seed}/400/300` : undefined,
-          size: Math.floor(Math.random() * 8000000) + 2000000,
-          dateModified: date,
-          format: isVideo ? 'mp4' : 'jpg',
-          isFavorite: false,
-          isHidden: false
-        });
-      }
-    });
-    return media;
-  };
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load persisted storage roots on mount
   useEffect(() => {
@@ -97,10 +55,7 @@ export default function App() {
           const allMedia: MediaFile[] = [];
           setIsScanning(true);
 
-          // 1. Always include system media if permission is granted
-          allMedia.push(...generateSystemMedia());
-
-          // 2. Include media from additional storage roots (SD cards, etc)
+          // Include media from additional storage roots (SD cards, etc)
           if (savedRoots && savedRoots.length > 0) {
             setStorageRoots(savedRoots);
             for (const root of savedRoots) {
@@ -128,7 +83,7 @@ export default function App() {
 
   const handleRefreshAll = async () => {
     setIsScanning(true);
-    const allMedia: MediaFile[] = generateSystemMedia();
+    const allMedia: MediaFile[] = [];
     
     for (const root of storageRoots) {
       try {
@@ -208,36 +163,70 @@ export default function App() {
     setHasPermission(newPermission);
     await set('has-permission', newPermission);
     
-    if (!newPermission) {
+    if (newPermission) {
+      // On mobile, we trigger the file input to get real media
+      // @ts-ignore
+      if (!window.showDirectoryPicker && fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    } else {
       setFiles([]);
       setStorageRoots([]);
       await del('storage-roots');
     }
   };
 
+  const handleManualFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    setIsScanning(true);
+    const newMediaFiles: MediaFile[] = [];
+    
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      // @ts-ignore
+      const path = file.webkitRelativePath || '';
+      const media = await processFile(file, path);
+      if (media) newMediaFiles.push(media);
+    }
+
+    setFiles(prev => [...prev, ...newMediaFiles]);
+    setIsScanning(false);
+    setPermissionStep('granted');
+  };
+
   const handleAddStorageRoot = async () => {
+    console.log("Add Storage Root clicked");
     try {
       // @ts-ignore
-      if (!window.showDirectoryPicker) {
-        setScanError("External storage access requires a browser that supports the FileSystem Access API.");
-        return;
+      if (window.showDirectoryPicker) {
+        console.log("Using FileSystem Access API");
+        // @ts-ignore
+        const directoryHandle = await window.showDirectoryPicker({
+          mode: 'read'
+        });
+
+        const newRoots = [...storageRoots, directoryHandle];
+        setStorageRoots(newRoots);
+        await set('storage-roots', newRoots);
+
+        setIsScanning(true);
+        const allMedia = await scanDirectory(directoryHandle);
+        setFiles(prev => [...prev, ...allMedia]);
+        setIsScanning(false);
+      } else if (fileInputRef.current) {
+        console.log("Using File Input Fallback");
+        fileInputRef.current.click();
+      } else {
+        console.error("No file input ref or directory picker available");
+        setScanError("Your device does not support direct folder access. Please use the 'Add Source' button to select files.");
       }
-
-      // @ts-ignore
-      const directoryHandle = await window.showDirectoryPicker({
-        mode: 'read'
-      });
-
-      const newRoots = [...storageRoots, directoryHandle];
-      setStorageRoots(newRoots);
-      await set('storage-roots', newRoots);
-
-      setIsScanning(true);
-      const allMedia = await scanDirectory(directoryHandle);
-      setFiles(prev => [...prev, ...allMedia]);
-      setIsScanning(false);
     } catch (err: any) {
       console.error("Error adding storage root:", err);
+      if (err.name !== 'AbortError') {
+        setScanError(`Error: ${err.message}`);
+      }
     }
   };
 
@@ -670,6 +659,19 @@ export default function App() {
           <p className="text-app-text-muted font-medium">Indexing media...</p>
         </div>
       )}
+
+      {/* Hidden File Input for Mobile Fallback */}
+      <input 
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        multiple
+        // @ts-ignore
+        webkitdirectory=""
+        // @ts-ignore
+        directory=""
+        onChange={handleManualFileSelect}
+      />
 
       {openedFile && (
         <ImageViewer 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MoreVertical, Search, ArrowUpDown, Info, Trash2, Share2, FolderInput, Copy, CheckSquare, X, ArrowLeft } from 'lucide-react';
+import { MoreVertical, Search, ArrowUpDown, Info, Trash2, Share2, FolderInput, Copy, CheckSquare, X, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface TopBarProps {
@@ -50,6 +50,7 @@ export default function TopBar({
   const [isDeleteConfirm, setIsDeleteConfirm] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSortClick = () => {
     if (sortConfig.by === 'date') {
@@ -238,15 +239,24 @@ export default function TopBar({
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-app-surface p-6 rounded-lg w-80 border border-app-border">
             <h3 className="text-lg font-medium mb-4 text-app-text">Enter Password</h3>
-            <input 
-              type="password" 
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              className="w-full bg-app-bg border border-app-border rounded p-2 mb-4 text-app-text outline-none focus:border-app-accent"
-              placeholder={`Password (${appPassword})`}
-            />
+            <div className="relative mb-4">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
+                placeholder="Enter password"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-app-text-muted hover:text-app-text"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
             <div className="flex justify-end space-x-2">
-              <button onClick={() => setPasswordPrompt(false)} className="px-4 py-2 text-app-text-muted hover:text-app-text">Cancel</button>
+              <button onClick={() => { setPasswordPrompt(false); setShowPassword(false); }} className="px-4 py-2 text-app-text-muted hover:text-app-text">Cancel</button>
               <button onClick={submitPassword} className="px-4 py-2 bg-app-accent text-white rounded hover:opacity-90">Unlock</button>
             </div>
           </div>

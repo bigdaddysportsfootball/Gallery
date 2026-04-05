@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, HardDrive } from 'lucide-react';
+import { X, Plus, Trash2, HardDrive, Eye, EyeOff } from 'lucide-react';
 
 interface SettingsModalProps {
   appPassword?: string;
@@ -31,6 +31,7 @@ export default function SettingsModal({
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showPasswords, setShowPasswords] = useState(false);
 
   const handlePasswordChangeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,20 +155,31 @@ export default function SettingsModal({
               {isChangingPassword && (
                 <form onSubmit={handlePasswordChangeSubmit} className="mt-4 p-4 bg-app-bg/50 rounded-lg border border-app-border">
                   <div className="space-y-3">
-                    <input 
-                      type="password" 
-                      placeholder="Current Password" 
-                      value={oldPassword}
-                      onChange={(e) => setOldPassword(e.target.value)}
-                      className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent"
-                    />
-                    <input 
-                      type="password" 
-                      placeholder="New Password" 
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent"
-                    />
+                    <div className="relative">
+                      <input 
+                        type={showPasswords ? "text" : "password"} 
+                        placeholder="Current Password" 
+                        value={oldPassword}
+                        onChange={(e) => setOldPassword(e.target.value)}
+                        className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setShowPasswords(!showPasswords)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-app-text-muted hover:text-app-text"
+                      >
+                        {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input 
+                        type={showPasswords ? "text" : "password"} 
+                        placeholder="New Password" 
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
+                      />
+                    </div>
                     <button type="submit" className="w-full py-2 bg-app-accent text-white rounded hover:opacity-90 font-medium">
                       Save New Password
                     </button>
