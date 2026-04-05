@@ -133,7 +133,7 @@ export default function SettingsModal({
                 )}
               </div>
               <p className="text-[11px] text-app-text-muted leading-tight">
-                Add the root of your internal storage or SD card to index all media files. Android requires a one-time selection of the storage root to grant access.
+                On Android, use "Add Source" to select your media folders. The app will remember these files and you can "Refresh All" to re-index them.
               </p>
             </div>
           </div>

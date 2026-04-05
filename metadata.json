@@ -1,5 +1,5 @@
 {
   "name": "Remix: Gallery",
   "description": "A mobile-first gallery application for viewing images and videos.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["camera", "microphone", "geolocation", "storage"]
 }
