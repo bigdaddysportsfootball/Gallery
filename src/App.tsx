@@ -1,5 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { MOCK_FILES } from './mockData';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MediaFile, Folder } from './types';
 import TopBar from './components/TopBar';
 import GalleryGrid from './components/GalleryGrid';
@@ -9,7 +8,7 @@ import DetailsModal from './components/DetailsModal';
 import VideoPlayerModal from './components/VideoPlayerModal';
 
 export default function App() {
-  const [files, setFiles] = useState<MediaFile[]>(MOCK_FILES);
+  const [files, setFiles] = useState<MediaFile[]>([]);
   
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -33,12 +32,152 @@ export default function App() {
   const [isVideoPlayerOpen, setIsVideoPlayerOpen] = useState(false);
   const [videoToPlay, setVideoToPlay] = useState<MediaFile | null>(null);
 
+  const [isScanning, setIsScanning] = useState(true);
+  const [scanProgress, setScanProgress] = useState(0);
+
+  // Automatic Scan on Mount
+  useEffect(() => {
+    const performScan = async () => {
+      setIsScanning(true);
+      setScanProgress(0);
+      
+      // Simulate scanning progress
+      const steps = 10;
+      for (let i = 1; i <= steps; i++) {
+        await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 200));
+        setScanProgress(i * (100 / steps));
+      }
+
+      // Populate with media
+      const initialMedia: MediaFile[] = [
+        {
+          id: '1',
+          name: 'Summer Vacation.jpg',
+          type: 'image',
+          url: 'https://picsum.photos/seed/summer/1200/800',
+          thumbnailUrl: 'https://picsum.photos/seed/summer/400/400',
+          size: 2400000,
+          dateModified: new Date('2023-07-15').getTime(),
+          folderId: 'f1',
+          format: 'jpg'
+        },
+        {
+          id: '2',
+          name: 'Mountain Hike.jpg',
+          type: 'image',
+          url: 'https://picsum.photos/seed/mountain/1200/800',
+          thumbnailUrl: 'https://picsum.photos/seed/mountain/400/400',
+          size: 1800000,
+          dateModified: new Date('2023-08-20').getTime(),
+          folderId: 'f1',
+          isFavorite: true,
+          format: 'jpg'
+        },
+        {
+          id: '3',
+          name: 'City Lights.mp4',
+          type: 'video',
+          url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+          thumbnailUrl: 'https://picsum.photos/seed/city/400/400',
+          size: 15200000,
+          dateModified: new Date('2023-09-05').getTime(),
+          duration: '09:56',
+          folderId: 'f2',
+          format: 'mp4'
+        },
+        {
+          id: '4',
+          name: 'Beach Sunset.gif',
+          type: 'gif',
+          url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJqZ3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKMGpxx6BvYx4Yg/giphy.gif',
+          thumbnailUrl: 'https://picsum.photos/seed/beach/400/400',
+          size: 4100000,
+          dateModified: new Date('2023-10-12').getTime(),
+          folderId: 'f1',
+          format: 'gif'
+        },
+        {
+          id: '5',
+          name: 'Forest Path.jpg',
+          type: 'image',
+          url: 'https://picsum.photos/seed/forest/1200/800',
+          thumbnailUrl: 'https://picsum.photos/seed/forest/400/400',
+          size: 3100000,
+          dateModified: new Date('2023-11-20').getTime(),
+          folderId: 'f1',
+          format: 'jpg'
+        },
+        {
+          id: '6',
+          name: 'Family Dinner.jpg',
+          type: 'image',
+          url: 'https://picsum.photos/seed/dinner/1200/800',
+          thumbnailUrl: 'https://picsum.photos/seed/dinner/400/400',
+          size: 2900000,
+          dateModified: new Date('2023-12-24').getTime(),
+          folderId: 'f3',
+          format: 'jpg'
+        }
+      ];
+
+      setFiles(initialMedia);
+      setIsScanning(false);
+    };
+
+    performScan();
+  }, []);
+
+  // History Management for Back Button
+  useEffect(() => {
+    // Push an initial state to prevent immediate exit
+    if (window.history.state?.root !== true) {
+      window.history.pushState({ root: true }, '');
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      if (openedFile) {
+        setOpenedFile(null);
+        setIsVideoPlayerOpen(false);
+      } else if (currentFolderId) {
+        setCurrentFolderId(null);
+        setSelectedIds(new Set());
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    
+    // Explicitly remove any beforeunload listeners that might cause exit messages
+    window.onbeforeunload = null;
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [openedFile, currentFolderId]);
+
+  // Handle history pushing for navigation
+  const prevOpenedFile = useRef<MediaFile | null>(null);
+  const prevFolderId = useRef<string | null>(null);
+
+  useEffect(() => {
+    // If we just opened the viewer from not having it open
+    if (openedFile && !prevOpenedFile.current) {
+      window.history.pushState({ navigation: 'image' }, '');
+    } 
+    // If we just opened a folder from root
+    else if (currentFolderId && !prevFolderId.current) {
+      window.history.pushState({ navigation: 'folder' }, '');
+    }
+    
+    prevOpenedFile.current = openedFile;
+    prevFolderId.current = currentFolderId;
+  }, [openedFile, currentFolderId]);
+
   // Revert hidden files on close (simulated by effect on mount)
   useEffect(() => {
     setShowHidden(false);
   }, []);
 
-  // Automatically find and index folders from files
+  // Revert hidden files on close (simulated by effect on mount)
   const folders = useMemo(() => {
     const folderMap = new Map<string, Folder>();
     
@@ -161,7 +300,16 @@ export default function App() {
   };
 
   const handleToggleFavorite = (fileId: string) => {
-    setFiles(files.map(f => f.id === fileId ? { ...f, isFavorite: !f.isFavorite } : f));
+    setFiles(prevFiles => {
+      const updatedFiles = prevFiles.map(f => f.id === fileId ? { ...f, isFavorite: !f.isFavorite } : f);
+      
+      // Also update openedFile if it's the one being favorited
+      if (openedFile && openedFile.id === fileId) {
+        setOpenedFile(updatedFiles.find(f => f.id === fileId) || null);
+      }
+      
+      return updatedFiles;
+    });
   };
 
   const handleOpenFile = (file: MediaFile) => {
@@ -260,15 +408,36 @@ export default function App() {
         />
       </div>
 
+      {/* Scanning Overlay */}
+      {isScanning && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white p-6">
+          <div className="w-20 h-20 mb-6 relative">
+            <div className="absolute inset-0 border-4 border-app-accent/20 rounded-full"></div>
+            <div 
+              className="absolute inset-0 border-4 border-app-accent rounded-full border-t-transparent animate-spin"
+            ></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-xs font-bold">{Math.round(scanProgress)}%</span>
+            </div>
+          </div>
+          <h2 className="text-xl font-bold mb-2">Scanning Device</h2>
+          <p className="text-white/60 text-sm text-center max-w-xs">
+            Searching for new photos and videos in your storage...
+          </p>
+        </div>
+      )}
+
       {openedFile && (
         <ImageViewer 
           file={openedFile} 
+          allFiles={processedFiles}
           onClose={() => setOpenedFile(null)} 
           onToggleFavorite={() => handleToggleFavorite(openedFile.id)}
           onDelete={() => {
             setFiles(files.filter(f => f.id !== openedFile.id));
             setOpenedFile(null);
           }}
+          onNavigate={(file) => setOpenedFile(file)}
         />
       )}
 

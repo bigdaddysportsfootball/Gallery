@@ -1,21 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MediaFile } from '../types';
-import { Star, Edit2, Share2, Trash2, ArrowLeft } from 'lucide-react';
+import { Star, Edit2, Share2, Trash2, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, useMotionValue, useSpring } from 'motion/react';
 import { useDrag, usePinch, useGesture } from '@use-gesture/react';
 import { cn } from '../lib/utils';
 
 interface ImageViewerProps {
   file: MediaFile;
+  allFiles: MediaFile[];
   onClose: () => void;
   onToggleFavorite: () => void;
   onDelete: () => void;
+  onNavigate: (file: MediaFile) => void;
 }
 
-export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete }: ImageViewerProps) {
+export default function ImageViewer({ 
+  file, 
+  allFiles, 
+  onClose, 
+  onToggleFavorite, 
+  onDelete,
+  onNavigate
+}: ImageViewerProps) {
   const [showControls, setShowControls] = useState(true);
   const [isRenaming, setIsRenaming] = useState(false);
+  const [isDeleteConfirm, setIsDeleteConfirm] = useState(false);
   const [newName, setNewName] = useState(file.name);
+  
+  const currentIndex = allFiles.findIndex(f => f.id === file.id);
   
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -32,6 +44,7 @@ export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete 
     y.set(0);
     scale.set(1);
     setNewName(file.name);
+    setIsDeleteConfirm(false);
   }, [file, x, y, scale]);
 
   const bind = useGesture({
@@ -42,9 +55,23 @@ export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete 
         return;
       }
 
+      // Swipe down to close
       if (my > 100 && vy > 0.5 && !active) {
         onClose();
+        return;
+      }
+
+      // Swipe left/right to navigate
+      if (!active && Math.abs(mx) > 100) {
+        if (mx > 0 && currentIndex > 0) {
+          onNavigate(allFiles[currentIndex - 1]);
+        } else if (mx < 0 && currentIndex < allFiles.length - 1) {
+          onNavigate(allFiles[currentIndex + 1]);
+        }
+        x.set(0);
+        y.set(0);
       } else {
+        x.set(active ? mx : 0);
         y.set(active ? my : 0);
       }
     },
@@ -62,6 +89,29 @@ export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete 
     e.preventDefault();
     file.name = newName;
     setIsRenaming(false);
+  };
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: file.name,
+          text: `Check out this ${file.type}: ${file.name}`,
+          url: file.url,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      // Fallback: Copy link
+      try {
+        await navigator.clipboard.writeText(file.url);
+        alert('Link copied to clipboard');
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
   };
 
   return (
@@ -92,6 +142,30 @@ export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete 
           draggable={false}
           referrerPolicy="no-referrer"
         />
+
+        {/* Navigation Arrows */}
+        {currentIndex > 0 && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onNavigate(allFiles[currentIndex - 1]); }}
+            className={cn(
+              "absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-black/40 text-white rounded-full transition-opacity duration-300",
+              showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+          >
+            <ChevronLeft size={32} />
+          </button>
+        )}
+        {currentIndex < allFiles.length - 1 && (
+          <button 
+            onClick={(e) => { e.stopPropagation(); onNavigate(allFiles[currentIndex + 1]); }}
+            className={cn(
+              "absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-black/40 text-white rounded-full transition-opacity duration-300",
+              showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+          >
+            <ChevronRight size={32} />
+          </button>
+        )}
       </div>
 
       {/* Bottom Bar */}
@@ -106,11 +180,21 @@ export default function ImageViewer({ file, onClose, onToggleFavorite, onDelete 
           <button onClick={(e) => { e.stopPropagation(); setIsRenaming(true); }} className="p-3 text-white flex flex-col items-center">
             <Edit2 size={24} />
           </button>
-          <button className="p-3 text-white flex flex-col items-center">
+          <button onClick={handleShare} className="p-3 text-white flex flex-col items-center">
             <Share2 size={24} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-3 text-white flex flex-col items-center">
-            <Trash2 size={24} />
+          <button 
+            onClick={(e) => { e.stopPropagation(); setIsDeleteConfirm(true); }} 
+            className={cn(
+              "p-3 flex flex-col items-center transition-colors",
+              isDeleteConfirm ? "text-red-500" : "text-white"
+            )}
+          >
+            {isDeleteConfirm ? (
+              <span className="text-xs font-bold" onClick={(e) => { e.stopPropagation(); onDelete(); }}>DELETE?</span>
+            ) : (
+              <Trash2 size={24} />
+            )}
           </button>
         </div>
       </div>

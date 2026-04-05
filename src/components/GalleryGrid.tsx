@@ -83,8 +83,8 @@ export default function GalleryGrid({
       </div>
       
       {items.length === 0 && (
-        <div className="flex flex-col items-center justify-center h-64 text-app-text-muted">
-          <p>No items found</p>
+        <div className="flex flex-col items-center justify-center h-64 text-app-text-muted p-8 text-center">
+          <p className="mb-4">No items found</p>
         </div>
       )}
     </div>
