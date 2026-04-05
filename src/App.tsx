@@ -120,8 +120,11 @@ export default function App() {
   const performAutoScan = async () => {
     setScanError(null);
     
-    // 1. Try the advanced Directory Picker (Desktop Chrome/Edge)
-    if ('showDirectoryPicker' in window) {
+    // Detect if we are on a mobile device (Android/iOS)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // 1. Try the advanced Directory Picker ONLY on Desktop
+    if (!isMobile && 'showDirectoryPicker' in window) {
       try {
         const directoryHandle = await (window as any).showDirectoryPicker();
         setIsScanning(true);
@@ -129,25 +132,23 @@ export default function App() {
         setHasPermission(true);
         const allMedia = await scanDirectory(directoryHandle);
         finishScan(allMedia);
-        return; // Success
+        return;
       } catch (err: any) {
-        console.warn("Advanced picker failed or blocked, trying fallback...", err);
-        // If it's a security error (common in iframes), we fall through to the input fallback
-        if (err.name === 'SecurityError' || err.name === 'NotAllowedError') {
-          // Fall through
-        } else {
-          setScanError(err.message || "Scan cancelled.");
-          setIsScanning(false);
-          return;
-        }
+        console.warn("Advanced picker failed, falling back...", err);
+        // Fall through to file input
       }
     }
 
-    // 2. Fallback for Android/Mobile/Blocked Iframes: Trigger the hidden file input
+    // 2. Fallback for Android/Mobile: Trigger the native system picker
+    // This is the most reliable way to get media on an Android APK
     if (fileInputRef.current) {
-      fileInputRef.current.click();
+      try {
+        fileInputRef.current.click();
+      } catch (err: any) {
+        setScanError("Could not open system picker: " + err.message);
+      }
     } else {
-      setScanError("Your device does not support direct storage access. Please try a different browser.");
+      setScanError("Your device storage access is not supported. Please ensure you are using a modern browser.");
     }
   };
 
