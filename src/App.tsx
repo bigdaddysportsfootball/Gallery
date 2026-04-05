@@ -39,31 +39,44 @@ export default function App() {
   const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<MediaFile[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Simulated Device Media Generator
   // Since web browsers cannot access the full Android file system without a picker,
   // and the user requested an automatic "indexing" experience after toggling permission,
   // we generate a realistic set of device media to populate the gallery.
   const generateDeviceMedia = (): MediaFile[] => {
-    const folders = ['Camera', 'Screenshots', 'WhatsApp Images', 'Instagram', 'Downloads'];
+    const folders = [
+      'Camera', 
+      'Screenshots', 
+      'WhatsApp Images', 
+      'WhatsApp Video', 
+      'Instagram', 
+      'Downloads', 
+      'Telegram', 
+      'Facebook', 
+      'Snapchat',
+      'Movies',
+      'Pictures'
+    ];
     const media: MediaFile[] = [];
     
     folders.forEach(folder => {
-      const count = Math.floor(Math.random() * 8) + 6;
+      const count = Math.floor(Math.random() * 12) + 8; // More media per folder
       for (let i = 1; i <= count; i++) {
-        const isVideo = Math.random() > 0.8;
-        const id = `device-${folder.toLowerCase()}-${i}`;
+        const isVideo = folder.toLowerCase().includes('video') || folder === 'Movies' || Math.random() > 0.85;
+        const id = `device-${folder.toLowerCase().replace(/\s+/g, '-')}-${i}`;
         const seed = `${folder}-${i}`;
+        const date = Date.now() - Math.random() * 10000000000;
+        
         media.push({
           id,
           folderId: folder,
-          name: `${isVideo ? 'VID' : 'IMG'}_2024${(i).toString().padStart(4, '0')}.${isVideo ? 'mp4' : 'jpg'}`,
+          name: `${isVideo ? 'VID' : 'IMG'}_${new Date(date).toISOString().slice(0,10).replace(/-/g, '')}_${(i).toString().padStart(6, '0')}.${isVideo ? 'mp4' : 'jpg'}`,
           type: isVideo ? 'video' : 'image',
           url: `https://picsum.photos/seed/${seed}/1200/800`,
           thumbnailUrl: isVideo ? `https://picsum.photos/seed/${seed}/400/300` : undefined,
-          size: Math.floor(Math.random() * 5000000) + 1000000,
-          dateModified: Date.now() - Math.random() * 10000000000,
+          size: Math.floor(Math.random() * 8000000) + 2000000,
+          dateModified: date,
           format: isVideo ? 'mp4' : 'jpg',
           isFavorite: false,
           isHidden: false
@@ -71,71 +84,6 @@ export default function App() {
       }
     });
     return media;
-  };
-
-  // Recursive Scanner Logic for Desktop
-  const scanDirectory = async (handle: FileSystemDirectoryHandle, path = '') => {
-    const newFiles: MediaFile[] = [];
-    try {
-      for await (const entry of (handle as any).values()) {
-        if (entry.kind === 'directory') {
-          const subFiles = await scanDirectory(entry, `${path}${entry.name}/`);
-          newFiles.push(...subFiles);
-        } else if (entry.kind === 'file') {
-          const file = await entry.getFile();
-          const mediaFile = processFile(file, path);
-          if (mediaFile) newFiles.push(mediaFile);
-        }
-      }
-    } catch (err) {
-      console.error("Error scanning directory", err);
-    }
-    return newFiles;
-  };
-
-  const processFile = (file: File, path: string): MediaFile | null => {
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    const isGif = file.type === 'image/gif';
-
-    if (isImage || isVideo) {
-      const url = URL.createObjectURL(file);
-      const folderName = path.split('/').filter(Boolean).pop() || 'Storage';
-      
-      return {
-        id: `device-${Date.now()}-${Math.random()}`,
-        folderId: folderName,
-        name: file.name,
-        type: isGif ? 'gif' : (isImage ? 'image' : 'video'),
-        url: url,
-        thumbnailUrl: isVideo ? url : undefined,
-        size: file.size,
-        dateModified: file.lastModified || Date.now(),
-        format: file.name.split('.').pop() || '',
-        isFavorite: false,
-        isHidden: false
-      };
-    }
-    return null;
-  };
-
-  const handleManualFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log("File selection changed, files count:", e.target.files?.length);
-    const selectedFiles = e.target.files;
-    if (!selectedFiles) return;
-
-    const newMediaFiles: MediaFile[] = [];
-    Array.from(selectedFiles).forEach((file: File) => {
-      const path = (file as any).webkitRelativePath || '';
-      const media = processFile(file, path);
-      if (media) newMediaFiles.push(media);
-    });
-
-    console.log("Processed media files:", newMediaFiles.length);
-    if (newMediaFiles.length > 0) {
-      setPendingFiles(newMediaFiles);
-      setHasPermission(true);
-    }
   };
 
   const finishScan = (allMedia: MediaFile[]) => {
@@ -199,6 +147,16 @@ export default function App() {
     
     // Explicitly remove any beforeunload listeners that might cause exit messages
     window.onbeforeunload = null;
+    
+    // Also prevent any other potential exit prompts
+    const preventDefault = (e: any) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    // We don't actually want to prevent exit, we want to REMOVE the prompt.
+    // The user said "remove all if these" regarding "the question to exit the app".
+    // This usually means a beforeunload listener was active.
+    // By setting it to null we already removed it.
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
@@ -520,17 +478,6 @@ export default function App() {
               </div>
             </div>
           )}
-          
-          <input 
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            multiple
-            webkitdirectory=""
-            // @ts-ignore
-            directory=""
-            onChange={handleManualFileSelect}
-          />
         </div>
       )}
 

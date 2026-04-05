@@ -93,23 +93,37 @@ export default function ImageViewer({
 
   const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (navigator.share) {
-      try {
+    
+    try {
+      // Try to fetch the blob to share as a file if supported
+      const response = await fetch(file.url);
+      const blob = await response.blob();
+      const shareFile = new File([blob], file.name, { type: blob.type });
+
+      if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+        await navigator.share({
+          files: [shareFile],
+          title: file.name,
+          text: `Check out this ${file.type}`,
+        });
+      } else if (navigator.share) {
         await navigator.share({
           title: file.name,
           text: `Check out this ${file.type}: ${file.name}`,
           url: file.url,
         });
-      } catch (err) {
-        console.error('Error sharing:', err);
+      } else {
+        throw new Error('Web Share API not supported');
       }
-    } else {
+    } catch (err) {
+      console.error('Error sharing:', err);
       // Fallback: Copy link
       try {
         await navigator.clipboard.writeText(file.url);
-        alert('Link copied to clipboard');
-      } catch (err) {
-        console.error('Failed to copy:', err);
+        // Use a non-blocking notification if possible, but for now just log
+        console.log('Link copied to clipboard');
+      } catch (copyErr) {
+        console.error('Failed to copy:', copyErr);
       }
     }
   };

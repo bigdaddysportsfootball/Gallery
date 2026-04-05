@@ -27,16 +27,16 @@ export default function SettingsModal({
   const handlePasswordChangeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (oldPassword !== appPassword) {
-      alert('Incorrect current password');
+      // Removed alert as per user request
       return;
     }
     if (newPassword.length < 4) {
-      alert('New password must be at least 4 characters');
+      // Removed alert as per user request
       return;
     }
     if (onPasswordChange) {
       onPasswordChange(newPassword);
-      alert('Password changed successfully');
+      // Removed alert as per user request
       setIsChangingPassword(false);
       setOldPassword('');
       setNewPassword('');
