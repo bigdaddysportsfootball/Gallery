@@ -148,10 +148,15 @@ export default function App() {
           console.error(`Error refreshing ${root.name}:`, err);
         }
       }
-    } else if (hasPermission && files.length === 0) {
-      // 3. If permission granted but no files, simulate device media
-      const simulatedMedia = await fetchNativeMedia();
-      allMedia.push(...simulatedMedia);
+    }
+    
+    // 3. Always fetch native/mock media if permission is granted
+    if (hasPermission) {
+      const nativeMedia = await fetchNativeMedia();
+      // Avoid duplicates if some were already in allMedia
+      const existingIds = new Set(allMedia.map(m => m.id));
+      const filteredNative = nativeMedia.filter(m => !existingIds.has(m.id));
+      allMedia.push(...filteredNative);
     } else if (forcePicker && allMedia.length === 0) {
       // 4. Trigger picker if forced and no files found
       console.log("No storage roots and no manual files, triggering Add Storage Root");
@@ -161,11 +166,10 @@ export default function App() {
     }
     
     if (allMedia.length > 0) {
-      // Merge and avoid duplicates by ID
-      const existingIds = new Set(allMedia.map(m => m.id));
-      // Keep any files that weren't re-processed (unlikely but safe)
-      const otherFiles = files.filter(f => !existingIds.has(f.id));
-      setFiles([...otherFiles, ...allMedia]);
+      setFiles(allMedia);
+    } else if (hasPermission) {
+      // If permission is on but no files found, clear the gallery
+      setFiles([]);
     }
     
     setIsScanning(false);
@@ -224,21 +228,19 @@ export default function App() {
   };
 
   const fetchNativeMedia = async (): Promise<MediaFile[]> => {
-    // Check if we are running in a native environment (e.g., Capacitor, Cordova, or custom APK bridge)
+    // Check for native bridges (Capacitor, Cordova, or custom)
     // @ts-ignore
-    const isNative = window.Capacitor || window.cordova || window.androidBridge;
+    const isNative = window.Capacitor || window.cordova || window.androidBridge || window.location.protocol === 'file:';
+    const isAISPreview = window.location.hostname.includes('run.app') || window.location.hostname.includes('localhost');
 
     if (isNative) {
-      console.log("Native environment detected. Scanning device storage...");
       try {
-        // This is where the real native call happens for the APK
         // @ts-ignore
         if (window.androidBridge && window.androidBridge.getMedia) {
           // @ts-ignore
           const json = await window.androidBridge.getMedia();
           return JSON.parse(json);
         }
-        // Fallback or other bridge types (Capacitor etc)
         return []; 
       } catch (err) {
         console.error("Native scan failed:", err);
@@ -247,36 +249,36 @@ export default function App() {
     }
 
     // ONLY for the AI Studio Browser Preview:
-    // We show mock data so you can test the "Toggle" flow without browser security errors.
-    console.log("Browser environment detected. Showing preview mock data.");
-    return [
-      { id: 'dev-1', folderId: 'Camera', name: 'IMG_20240405_1021.jpg', type: 'image', url: 'https://picsum.photos/seed/cam1/1200/800', size: 3450000, dateModified: Date.now() - 3600000, format: 'jpg', isFavorite: false, isHidden: false },
-      { id: 'dev-2', folderId: 'Camera', name: 'IMG_20240405_1022.jpg', type: 'image', url: 'https://picsum.photos/seed/cam2/1200/800', size: 2800000, dateModified: Date.now() - 7200000, format: 'jpg', isFavorite: false, isHidden: false },
-      { id: 'dev-3', folderId: 'Downloads', name: 'wallpaper_4k.png', type: 'image', url: 'https://picsum.photos/seed/wall1/1200/800', size: 1200000, dateModified: Date.now() - 86400000, format: 'png', isFavorite: false, isHidden: false },
-      { id: 'dev-4', folderId: 'WhatsApp', name: 'IMG-WA0001.jpg', type: 'image', url: 'https://picsum.photos/seed/wa1/1200/800', size: 450000, dateModified: Date.now() - 172800000, format: 'jpg', isFavorite: false, isHidden: false },
-      { id: 'dev-5', folderId: 'Instagram', name: 'Post_123.jpg', type: 'image', url: 'https://picsum.photos/seed/ig1/1200/800', size: 890000, dateModified: Date.now() - 259200000, format: 'jpg', isFavorite: false, isHidden: false },
-      { id: 'dev-6', folderId: 'Camera', name: 'VIDEO_001.mp4', type: 'video', url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumbnailUrl: 'https://picsum.photos/seed/vid1/1200/800', size: 15000000, dateModified: Date.now() - 432000000, format: 'mp4', isFavorite: false, isHidden: false }
-    ];
+    if (isAISPreview) {
+      return [
+        { id: 'dev-1', folderId: 'Camera', name: 'IMG_20240405_1021.jpg', type: 'image', url: 'https://picsum.photos/seed/cam1/1200/800', size: 3450000, dateModified: Date.now() - 3600000, format: 'jpg', isFavorite: false, isHidden: false },
+        { id: 'dev-2', folderId: 'Camera', name: 'IMG_20240405_1022.jpg', type: 'image', url: 'https://picsum.photos/seed/cam2/1200/800', size: 2800000, dateModified: Date.now() - 7200000, format: 'jpg', isFavorite: false, isHidden: false },
+        { id: 'dev-3', folderId: 'Downloads', name: 'wallpaper_4k.png', type: 'image', url: 'https://picsum.photos/seed/wall1/1200/800', size: 1200000, dateModified: Date.now() - 86400000, format: 'png', isFavorite: false, isHidden: false },
+        { id: 'dev-4', folderId: 'WhatsApp', name: 'IMG-WA0001.jpg', type: 'image', url: 'https://picsum.photos/seed/wa1/1200/800', size: 450000, dateModified: Date.now() - 172800000, format: 'jpg', isFavorite: false, isHidden: false },
+        { id: 'dev-5', folderId: 'Instagram', name: 'Post_123.jpg', type: 'image', url: 'https://picsum.photos/seed/ig1/1200/800', size: 890000, dateModified: Date.now() - 259200000, format: 'jpg', isFavorite: false, isHidden: false },
+        { id: 'dev-6', folderId: 'Camera', name: 'VIDEO_001.mp4', type: 'video', url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', thumbnailUrl: 'https://picsum.photos/seed/vid1/1200/800', size: 15000000, dateModified: Date.now() - 432000000, format: 'mp4', isFavorite: false, isHidden: false }
+      ];
+    }
+
+    return [];
   };
 
-  const handleGrantInSettings = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleGrantInSettings = async (e?: React.MouseEvent) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    
     const newPermission = !hasPermission;
     setHasPermission(newPermission);
     await set('has-permission', newPermission);
     
     if (newPermission) {
+      setPermissionStep('granted');
       setIsScanning(true);
-      // Simulate the scan delay
-      setTimeout(async () => {
-        const media = await fetchNativeMedia();
-        setFiles(media);
-        setIsScanning(false);
-      }, 1500);
+      const media = await fetchNativeMedia();
+      setFiles(media);
+      setIsScanning(false);
     } else {
+      setPermissionStep('request');
       setFiles([]);
-      setStorageRoots([]);
-      await del('storage-roots');
     }
   };
 
@@ -301,11 +303,9 @@ export default function App() {
   };
 
   const handleAddStorageRoot = async () => {
-    console.log("Add Storage Root clicked");
-    try {
-      // @ts-ignore
-      if (window.showDirectoryPicker) {
-        console.log("Using FileSystem Access API");
+    // @ts-ignore
+    if (window.showDirectoryPicker) {
+      try {
         // @ts-ignore
         const directoryHandle = await window.showDirectoryPicker({
           mode: 'read'
@@ -319,18 +319,21 @@ export default function App() {
         const allMedia = await scanDirectory(directoryHandle);
         setFiles(prev => [...prev, ...allMedia]);
         setIsScanning(false);
-      } else if (fileInputRef.current) {
-        console.log("Using File Input Fallback");
-        fileInputRef.current.click();
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error("Error adding storage root:", err);
+        }
+      }
+    } else {
+      // On Android APK, "Add Source" triggers a full native scan
+      setIsScanning(true);
+      const media = await fetchNativeMedia();
+      if (media.length > 0) {
+        setFiles(media);
       } else {
-        console.error("No file input ref or directory picker available");
-        setScanError("Your device does not support direct folder access. Please use the 'Add Source' button to select files.");
+        fileInputRef.current?.click();
       }
-    } catch (err: any) {
-      console.error("Error adding storage root:", err);
-      if (err.name !== 'AbortError') {
-        setScanError(`Error: ${err.message}`);
-      }
+      setIsScanning(false);
     }
   };
 
@@ -685,135 +688,20 @@ export default function App() {
 
       {/* Native Permission Flow Overlay */}
       {permissionStep !== 'granted' && !isScanning && (
-        <div className="fixed inset-0 z-[120] bg-black flex items-center justify-center transition-all duration-300">
-          {permissionStep === 'request' && (
-            <div className="fixed inset-0 bg-black/40 flex items-end justify-center p-4 pb-12 animate-in fade-in duration-300">
-              <div className="bg-[#1c1c1e] w-full max-w-[380px] rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom-full duration-500">
-                <div className="w-14 h-14 bg-[#2c2c2e] rounded-2xl flex items-center justify-center mb-6 mx-auto">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                </div>
-                <h2 className="text-[22px] font-semibold text-white text-center leading-tight mb-8 px-4">
-                  Allow Gallery to access photos and videos on this device?
-                </h2>
-                <div className="flex flex-col gap-3">
-                  <button 
-                    onClick={handleRequestAllow}
-                    className="w-full bg-[#007aff] text-white py-4 rounded-[1.5rem] font-bold text-lg active:scale-[0.98] transition-transform"
-                  >
-                    Allow
-                  </button>
-                  <p className="text-center text-[#98989d] text-sm mt-2">
-                    On Android, you will be prompted to select your media folders.
-                  </p>
-                  <button 
-                    onClick={() => setScanError("Access is required to use the gallery.")}
-                    className="w-full bg-[#2c2c2e] text-[#98989d] py-4 rounded-[1.5rem] font-bold text-lg active:scale-[0.98] transition-transform"
-                  >
-                    Don't allow
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {permissionStep === 'settings' && (
-            <div className="bg-[#1a1110] w-full h-full flex flex-col animate-in fade-in duration-300 text-[#e6e1e0]">
-              {/* Android Settings Header */}
-              <div className="p-4 pt-8 flex items-center gap-4">
-                <button 
-                  onClick={handleBackFromSettings} 
-                  className="p-2 -ml-2 text-[#e6e1e0] active:bg-white/10 rounded-full transition-colors"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                </button>
-                <h2 className="text-[22px] font-normal">App permissions</h2>
-                <div className="ml-auto">
-                  <MoreVertical size={20} />
-                </div>
-              </div>
-              
-              <div className="flex-1 flex flex-col items-center px-6 pt-8">
-                <div className="w-20 h-20 bg-[#f86734] rounded-full flex items-center justify-center mb-4 shadow-lg">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                </div>
-                <h1 className="text-[28px] font-normal mb-12">Gallery</h1>
-                
-                <div className="w-full space-y-8">
-                  {hasPermission ? (
-                    <div>
-                      <h3 className="text-[14px] font-medium text-[#d0c4c2] mb-6 px-1">Allowed</h3>
-                      <div 
-                        className="flex items-center gap-6 p-1 cursor-pointer active:opacity-70 transition-opacity"
-                        onClick={handleGrantInSettings}
-                      >
-                        <div className="w-6 h-6 flex items-center justify-center text-[#e6e1e0]">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-[18px] font-normal">Photos and videos</div>
-                          <div className="text-[14px] text-[#d0c4c2]">Allowed</div>
-                        </div>
-                        <div 
-                          className="w-[44px] h-[24px] rounded-full p-1 transition-colors duration-300 bg-[#f86734]"
-                        >
-                          <div className="w-[16px] h-[16px] bg-white rounded-full shadow-md transform transition-transform duration-300 translate-x-[20px]"></div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 className="text-[14px] font-medium text-[#d0c4c2] mb-6 px-1">Not allowed</h3>
-                      <div 
-                        className="flex items-center gap-6 p-1 cursor-pointer active:opacity-70 transition-opacity"
-                        onClick={handleGrantInSettings}
-                      >
-                        <div className="w-6 h-6 flex items-center justify-center text-[#e6e1e0]">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-[18px] font-normal">Photos and videos</div>
-                          <div className="text-[14px] text-[#d0c4c2]">Not allowed</div>
-                        </div>
-                        <div 
-                          className="w-[44px] h-[24px] rounded-full p-1 transition-colors duration-300 bg-[#4d4443]"
-                        >
-                          <div className="w-[16px] h-[16px] bg-white rounded-full shadow-md transform transition-transform duration-300 translate-x-0"></div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <h3 className="text-[14px] font-medium text-[#d0c4c2] mb-6 px-1">{hasPermission ? 'Not allowed' : ''}</h3>
-                    <div className="flex items-center gap-6 p-1 opacity-60">
-                      <div className="w-6 h-6 flex items-center justify-center text-[#e6e1e0]">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-                      </div>
-                      <div className="flex-1">
-                        <div className="text-[18px] font-normal">Notifications</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-8 border-t border-[#4d4443]">
-                    <div className="flex items-center justify-between p-1">
-                      <div className="flex-1">
-                        <div className="text-[18px] font-normal">Manage app if unused</div>
-                        <div className="text-[14px] text-[#d0c4c2] pr-8">Remove permissions, delete temporary files, stop notifications and archive the app</div>
-                      </div>
-                      <div className="w-[44px] h-[24px] bg-[#f86734] rounded-full p-1">
-                        <div className="w-[16px] h-[16px] bg-white rounded-full shadow-md translate-x-[20px]"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-auto w-full flex justify-between p-4 pb-8">
-                  <div className="p-2 text-[#e6e1e0] opacity-80"><Info size={24} /></div>
-                </div>
-              </div>
-            </div>
-          )}
+        <div className="fixed inset-0 z-[120] bg-[#121212] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
+          <div className="w-24 h-24 bg-orange-500/10 rounded-full flex items-center justify-center mb-8">
+            <FolderIcon className="w-12 h-12 text-orange-500" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-4">Access your media</h1>
+          <p className="text-gray-400 mb-8 max-w-sm">
+            To display your photos and videos, PA Gallery needs permission to access your device's storage.
+          </p>
+          <button
+            onClick={() => handleGrantInSettings()}
+            className="w-full max-w-xs bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-all active:scale-95"
+          >
+            Allow Access
+          </button>
         </div>
       )}
 
@@ -865,6 +753,12 @@ export default function App() {
           onAddStorageRoot={handleAddStorageRoot}
           onRemoveStorageRoot={handleRemoveStorageRoot}
           onRefreshAll={() => handleRefreshAll(true)}
+          hasPermission={hasPermission}
+          onPermissionToggle={handleGrantInSettings}
+          onManagePermissions={() => {
+            setIsSettingsOpen(false);
+            setPermissionStep('settings');
+          }}
           onClose={() => setIsSettingsOpen(false)} 
         />
       )}

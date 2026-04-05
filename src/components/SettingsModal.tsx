@@ -12,6 +12,9 @@ interface SettingsModalProps {
   onAddStorageRoot?: () => void;
   onRemoveStorageRoot?: (index: number) => void;
   onRefreshAll?: () => void;
+  hasPermission?: boolean;
+  onPermissionToggle?: (e: React.MouseEvent) => void;
+  onManagePermissions?: () => void;
   onClose: () => void;
 }
 
@@ -26,6 +29,9 @@ export default function SettingsModal({
   onAddStorageRoot,
   onRemoveStorageRoot,
   onRefreshAll,
+  hasPermission = false,
+  onPermissionToggle,
+  onManagePermissions,
   onClose 
 }: SettingsModalProps) {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -87,6 +93,35 @@ export default function SettingsModal({
                   ))}
                 </div>
               </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-app-text-muted uppercase tracking-wider mb-3">Permissions</h3>
+            <div className="space-y-3">
+              <div 
+                className="flex items-center justify-between p-3 bg-app-bg/50 rounded-lg border border-app-border cursor-pointer active:bg-app-border/50 transition-colors"
+                onClick={onPermissionToggle}
+              >
+                <div className="flex flex-col">
+                  <span className="text-app-text font-medium">Photos and videos</span>
+                  <span className="text-[11px] text-app-text-muted">Allow app to access all media on device</span>
+                </div>
+                <div 
+                  className={`w-[44px] h-[24px] rounded-full p-1 transition-colors duration-300 ${hasPermission ? 'bg-[#f86734]' : 'bg-app-border'}`}
+                >
+                  <div className={`w-[16px] h-[16px] bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-[20px]' : 'translate-x-0'}`}></div>
+                </div>
+              </div>
+              <button 
+                onClick={onManagePermissions}
+                className="w-full py-2 text-sm text-app-accent hover:bg-app-accent/10 rounded transition-colors border border-app-accent/20"
+              >
+                Manage App Permissions
+              </button>
+              <p className="text-[11px] text-app-text-muted leading-tight">
+                This permission is required for the app to automatically find and display your media. If disabled, you must manually add folders using "Add Source".
+              </p>
             </div>
           </div>
 
