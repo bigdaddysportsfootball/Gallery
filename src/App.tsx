@@ -47,17 +47,29 @@ export default function App() {
       try {
         const savedRoots = await get<FileSystemDirectoryHandle[]>('storage-roots');
         const savedHasPermission = await get<boolean>('has-permission');
+        const savedFiles = await get<MediaFile[]>('saved-files');
         
         if (savedHasPermission) {
           setHasPermission(true);
           setPermissionStep('granted');
           
-          const allMedia: MediaFile[] = [];
-          setIsScanning(true);
+          let allMedia: MediaFile[] = [];
+
+          // Re-create Blob URLs for saved files (fallback mode)
+          if (savedFiles && savedFiles.length > 0) {
+            allMedia = savedFiles.map(f => {
+              if (f.file) {
+                const url = URL.createObjectURL(f.file);
+                return { ...f, url, thumbnailUrl: f.type === 'video' ? url : undefined };
+              }
+              return f;
+            });
+          }
 
           // Include media from additional storage roots (SD cards, etc)
           if (savedRoots && savedRoots.length > 0) {
             setStorageRoots(savedRoots);
+            setIsScanning(true);
             for (const root of savedRoots) {
               try {
                 // @ts-ignore
@@ -81,7 +93,24 @@ export default function App() {
     loadRoots();
   }, []);
 
+  // Persist files state
+  useEffect(() => {
+    if (files.length > 0) {
+      // We don't save the Blob URLs as they are invalid after refresh
+      // But we keep the File objects
+      const filesToSave = files.map(f => ({ ...f, url: '', thumbnailUrl: undefined }));
+      set('saved-files', filesToSave);
+    }
+  }, [files]);
+
   const handleRefreshAll = async () => {
+    console.log("Refresh All triggered");
+    if (storageRoots.length === 0) {
+      console.log("No storage roots, triggering Add Storage Root");
+      handleAddStorageRoot();
+      return;
+    }
+
     setIsScanning(true);
     const allMedia: MediaFile[] = [];
     
@@ -102,7 +131,17 @@ export default function App() {
         console.error(`Error refreshing ${root.name}:`, err);
       }
     }
-    setFiles(allMedia);
+    
+    const manualFiles = files.filter(f => f.file);
+    
+    if (allMedia.length > 0) {
+      // Merge and avoid duplicates by ID
+      const existingIds = new Set(allMedia.map(m => m.id));
+      const uniqueManual = manualFiles.filter(m => !existingIds.has(m.id));
+      setFiles([...uniqueManual, ...allMedia]);
+    } else if (manualFiles.length > 0) {
+      setFiles(manualFiles);
+    }
     setIsScanning(false);
   };
 
@@ -147,7 +186,8 @@ export default function App() {
         dateModified: file.lastModified || Date.now(),
         format: file.name.split('.').pop() || '',
         isFavorite: false,
-        isHidden: false
+        isHidden: false,
+        file: file
       };
     }
     return null;
@@ -426,11 +466,6 @@ export default function App() {
   }, [files, currentFolderId, showHidden, filters, sortConfig, searchQuery]);
 
   // Actions
-  const handleRefresh = () => {
-    // Simulate refresh
-    console.log('Refreshed');
-  };
-
   const handleDelete = () => {
     if (currentFolderId) {
       setFiles(files.filter(f => !selectedIds.has(f.id)));
@@ -583,7 +618,7 @@ export default function App() {
               handleOpenFile(item as MediaFile);
             }
           }}
-          onRefresh={handleRefresh}
+          onRefresh={handleRefreshAll}
         />
       </div>
 
@@ -606,6 +641,9 @@ export default function App() {
                   >
                     Allow
                   </button>
+                  <p className="text-center text-[#98989d] text-sm mt-2">
+                    On Android, you will be prompted to select your media folders.
+                  </p>
                   <button 
                     onClick={() => setScanError("Access is required to use the gallery.")}
                     className="w-full bg-[#2c2c2e] text-[#98989d] py-4 rounded-[1.5rem] font-bold text-lg active:scale-[0.98] transition-transform"
@@ -666,6 +704,7 @@ export default function App() {
         ref={fileInputRef}
         className="hidden"
         multiple
+        accept="image/*,video/*"
         // @ts-ignore
         webkitdirectory=""
         // @ts-ignore

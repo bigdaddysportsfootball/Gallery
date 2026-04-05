@@ -13,6 +13,7 @@ export interface MediaFile {
   isHidden?: boolean;
   format: string;
   isFavorite?: boolean;
+  file?: File;
 }
 
 export interface Folder {
