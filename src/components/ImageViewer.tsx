@@ -95,23 +95,30 @@ export default function ImageViewer({
     e.stopPropagation();
     
     try {
+      console.log('Attempting to share file:', file.name);
+      
       // Try to fetch the blob to share as a file if supported
       const response = await fetch(file.url);
+      if (!response.ok) throw new Error('Failed to fetch file for sharing');
       const blob = await response.blob();
       const shareFile = new File([blob], file.name, { type: blob.type });
 
+      const shareData: ShareData = {
+        title: file.name,
+        text: `Check out this ${file.type}`,
+      };
+
+      // Check if file sharing is supported
       if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
-        await navigator.share({
-          files: [shareFile],
-          title: file.name,
-          text: `Check out this ${file.type}`,
-        });
-      } else if (navigator.share) {
-        await navigator.share({
-          title: file.name,
-          text: `Check out this ${file.type}: ${file.name}`,
-          url: file.url,
-        });
+        shareData.files = [shareFile];
+      } else {
+        // Fallback to URL if files can't be shared
+        shareData.url = file.url;
+      }
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+        console.log('Share successful');
       } else {
         throw new Error('Web Share API not supported');
       }
@@ -120,8 +127,8 @@ export default function ImageViewer({
       // Fallback: Copy link
       try {
         await navigator.clipboard.writeText(file.url);
-        // Use a non-blocking notification if possible, but for now just log
         console.log('Link copied to clipboard');
+        // We could add a toast here if we had one
       } catch (copyErr) {
         console.error('Failed to copy:', copyErr);
       }
@@ -156,30 +163,6 @@ export default function ImageViewer({
           draggable={false}
           referrerPolicy="no-referrer"
         />
-
-        {/* Navigation Arrows */}
-        {currentIndex > 0 && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); onNavigate(allFiles[currentIndex - 1]); }}
-            className={cn(
-              "absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-black/40 text-white rounded-full transition-opacity duration-300",
-              showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}
-          >
-            <ChevronLeft size={32} />
-          </button>
-        )}
-        {currentIndex < allFiles.length - 1 && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); onNavigate(allFiles[currentIndex + 1]); }}
-            className={cn(
-              "absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-black/40 text-white rounded-full transition-opacity duration-300",
-              showControls ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}
-          >
-            <ChevronRight size={32} />
-          </button>
-        )}
       </div>
 
       {/* Bottom Bar */}

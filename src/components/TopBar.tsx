@@ -21,6 +21,7 @@ interface TopBarProps {
   appPassword: string;
   isRoot: boolean;
   onBack: () => void;
+  onShare?: () => void;
 }
 
 export default function TopBar({
@@ -41,7 +42,8 @@ export default function TopBar({
   onShowHiddenChange,
   appPassword,
   isRoot,
-  onBack
+  onBack,
+  onShare
 }: TopBarProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -95,19 +97,7 @@ export default function TopBar({
         <div className="flex items-center space-x-1">
           {!isRoot && (
             <button 
-              onClick={async () => {
-                if (navigator.share) {
-                  try {
-                    await navigator.share({
-                      title: 'Shared Media',
-                      text: `Sharing ${selectedCount} items from Gallery`,
-                      // In a real app we'd share the actual files, but for now we share a generic text
-                    });
-                  } catch (err) {
-                    console.error('Error sharing:', err);
-                  }
-                }
-              }}
+              onClick={onShare}
               className="p-2 text-app-text-muted hover:text-app-text"
             >
               <Share2 size={20} />

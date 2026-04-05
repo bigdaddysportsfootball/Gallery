@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Plus, Trash2, HardDrive } from 'lucide-react';
 
 interface SettingsModalProps {
   appPassword?: string;
@@ -8,6 +8,10 @@ interface SettingsModalProps {
   onThemeChange: (theme: 'dark' | 'light') => void;
   accentColor: 'blue' | 'red' | 'green' | 'purple';
   onAccentColorChange: (color: 'blue' | 'red' | 'green' | 'purple') => void;
+  storageRoots?: FileSystemDirectoryHandle[];
+  onAddStorageRoot?: () => void;
+  onRemoveStorageRoot?: (index: number) => void;
+  onRefreshAll?: () => void;
   onClose: () => void;
 }
 
@@ -18,6 +22,10 @@ export default function SettingsModal({
   onThemeChange,
   accentColor,
   onAccentColorChange,
+  storageRoots = [],
+  onAddStorageRoot,
+  onRemoveStorageRoot,
+  onRefreshAll,
   onClose 
 }: SettingsModalProps) {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -78,6 +86,54 @@ export default function SettingsModal({
                   ))}
                 </div>
               </label>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-medium text-app-text-muted uppercase tracking-wider mb-3">Storage Management</h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-app-text">Storage Sources</span>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={onRefreshAll}
+                    className="px-3 py-1 bg-app-bg border border-app-border text-app-text rounded-lg text-sm font-medium hover:bg-app-border"
+                  >
+                    Refresh All
+                  </button>
+                  <button 
+                    onClick={onAddStorageRoot}
+                    className="flex items-center gap-1 px-3 py-1 bg-app-accent text-white rounded-lg text-sm font-medium hover:opacity-90"
+                  >
+                    <Plus size={16} />
+                    Add Source
+                  </button>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                {storageRoots.length === 0 ? (
+                  <p className="text-xs text-app-text-muted italic">No storage sources added yet.</p>
+                ) : (
+                  storageRoots.map((root, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-app-bg/50 rounded-lg border border-app-border">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <HardDrive size={18} className="text-app-accent shrink-0" />
+                        <span className="text-sm text-app-text truncate">{root.name || 'Main Storage'}</span>
+                      </div>
+                      <button 
+                        onClick={() => onRemoveStorageRoot?.(index)}
+                        className="p-1 text-red-500 hover:bg-red-500/10 rounded transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-[11px] text-app-text-muted leading-tight">
+                Add the root of your internal storage or SD card to index all media files. Android requires a one-time selection of the storage root to grant access.
+              </p>
             </div>
           </div>
 

@@ -1,15 +1,17 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MediaFile, Folder } from './types';
-import { Folder as FolderIcon } from 'lucide-react';
+import { Folder as FolderIcon, Plus, Trash2 } from 'lucide-react';
 import TopBar from './components/TopBar';
 import GalleryGrid from './components/GalleryGrid';
 import ImageViewer from './components/ImageViewer';
 import SettingsModal from './components/SettingsModal';
 import DetailsModal from './components/DetailsModal';
 import VideoPlayerModal from './components/VideoPlayerModal';
+import { get, set, del } from 'idb-keyval';
 
 export default function App() {
   const [files, setFiles] = useState<MediaFile[]>([]);
+  const [storageRoots, setStorageRoots] = useState<FileSystemDirectoryHandle[]>([]);
   
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -34,92 +36,197 @@ export default function App() {
   const [videoToPlay, setVideoToPlay] = useState<MediaFile | null>(null);
 
   const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
   const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
-  const [pendingFiles, setPendingFiles] = useState<MediaFile[]>([]);
 
-  // Simulated Device Media Generator
-  // Since web browsers cannot access the full Android file system without a picker,
-  // and the user requested an automatic "indexing" experience after toggling permission,
-  // we generate a realistic set of device media to populate the gallery.
-  const generateDeviceMedia = (): MediaFile[] => {
-    const folders = [
-      'Camera', 
-      'Screenshots', 
-      'WhatsApp Images', 
-      'WhatsApp Video', 
-      'Instagram', 
-      'Downloads', 
-      'Telegram', 
-      'Facebook', 
-      'Snapchat',
-      'Movies',
-      'Pictures'
-    ];
-    const media: MediaFile[] = [];
-    
-    folders.forEach(folder => {
-      const count = Math.floor(Math.random() * 12) + 8; // More media per folder
-      for (let i = 1; i <= count; i++) {
-        const isVideo = folder.toLowerCase().includes('video') || folder === 'Movies' || Math.random() > 0.85;
-        const id = `device-${folder.toLowerCase().replace(/\s+/g, '-')}-${i}`;
-        const seed = `${folder}-${i}`;
-        const date = Date.now() - Math.random() * 10000000000;
-        
-        media.push({
-          id,
-          folderId: folder,
-          name: `${isVideo ? 'VID' : 'IMG'}_${new Date(date).toISOString().slice(0,10).replace(/-/g, '')}_${(i).toString().padStart(6, '0')}.${isVideo ? 'mp4' : 'jpg'}`,
-          type: isVideo ? 'video' : 'image',
-          url: `https://picsum.photos/seed/${seed}/1200/800`,
-          thumbnailUrl: isVideo ? `https://picsum.photos/seed/${seed}/400/300` : undefined,
-          size: Math.floor(Math.random() * 8000000) + 2000000,
-          dateModified: date,
-          format: isVideo ? 'mp4' : 'jpg',
-          isFavorite: false,
-          isHidden: false
-        });
+  // Load persisted storage roots on mount
+  useEffect(() => {
+    const loadRoots = async () => {
+      try {
+        const savedRoots = await get<FileSystemDirectoryHandle[]>('storage-roots');
+        if (savedRoots && savedRoots.length > 0) {
+          setStorageRoots(savedRoots);
+          setHasPermission(true);
+          setPermissionStep('granted');
+          
+          // Trigger a scan for each root (will prompt for permission if needed)
+          const allMedia: MediaFile[] = [];
+          setIsScanning(true);
+          for (const root of savedRoots) {
+            try {
+              // @ts-ignore
+              const permission = await root.queryPermission({ mode: 'read' });
+              if (permission === 'granted') {
+                const rootMedia = await scanDirectory(root);
+                allMedia.push(...rootMedia);
+              } else {
+                // If permission is not granted, we'll need the user to click "Refresh" in settings
+                console.log(`Permission for ${root.name} is ${permission}`);
+              }
+            } catch (err) {
+              console.error(`Error querying permission for ${root.name}:`, err);
+            }
+          }
+          setFiles(allMedia);
+          setIsScanning(false);
+        }
+      } catch (err) {
+        console.error("Error loading saved roots:", err);
       }
-    });
-    return media;
-  };
+    };
+    loadRoots();
+  }, []);
 
-  const finishScan = (allMedia: MediaFile[]) => {
+  const handleRefreshAll = async () => {
+    const allMedia: MediaFile[] = [];
+    setIsScanning(true);
+    for (const root of storageRoots) {
+      try {
+        // @ts-ignore
+        let permission = await root.queryPermission({ mode: 'read' });
+        if (permission !== 'granted') {
+          // @ts-ignore
+          permission = await root.requestPermission({ mode: 'read' });
+        }
+        
+        if (permission === 'granted') {
+          const rootMedia = await scanDirectory(root);
+          allMedia.push(...rootMedia);
+        }
+      } catch (err) {
+        console.error(`Error refreshing ${root.name}:`, err);
+      }
+    }
     setFiles(allMedia);
     setIsScanning(false);
-    setHasPermission(true);
-    setPermissionStep('granted');
+  };
+
+  // Recursive Scanner Logic
+  const scanDirectory = async (handle: FileSystemDirectoryHandle, path = '') => {
+    const newFiles: MediaFile[] = [];
+    try {
+      // @ts-ignore
+      for await (const entry of handle.values()) {
+        if (entry.kind === 'directory') {
+          const subFiles = await scanDirectory(entry, `${path}${entry.name}/`);
+          newFiles.push(...subFiles);
+        } else if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          const mediaFile = await processFile(file, path);
+          if (mediaFile) newFiles.push(mediaFile);
+        }
+      }
+    } catch (err) {
+      console.error("Error scanning directory", err);
+    }
+    return newFiles;
+  };
+
+  const processFile = async (file: File, path: string): Promise<MediaFile | null> => {
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const isGif = file.type === 'image/gif';
+
+    if (isImage || isVideo) {
+      const url = URL.createObjectURL(file);
+      const folderName = path.split('/').filter(Boolean).pop() || 'Storage';
+      
+      return {
+        id: `device-${Date.now()}-${Math.random()}`,
+        folderId: folderName,
+        name: file.name,
+        type: isGif ? 'gif' : (isImage ? 'image' : 'video'),
+        url: url,
+        thumbnailUrl: isVideo ? url : undefined,
+        size: file.size,
+        dateModified: file.lastModified || Date.now(),
+        format: file.name.split('.').pop() || '',
+        isFavorite: false,
+        isHidden: false
+      };
+    }
+    return null;
   };
 
   const handleRequestAllow = () => {
     setPermissionStep('settings');
   };
 
-  const handleGrantInSettings = (e: React.MouseEvent) => {
+  const handleGrantInSettings = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log("Toggle clicked, current hasPermission:", hasPermission);
     
-    const newPermissionState = !hasPermission;
-    setHasPermission(newPermissionState);
-    
-    if (newPermissionState) {
-      // Simulate the "auto indexing" that happens in native apps
+    try {
+      // @ts-ignore
+      if (!window.showDirectoryPicker) {
+        throw new Error("FileSystem Access API not supported in this browser.");
+      }
+
+      // @ts-ignore
+      const directoryHandle = await window.showDirectoryPicker({
+        mode: 'read',
+        id: 'main-storage'
+      });
+
+      const newRoots = [...storageRoots, directoryHandle];
+      setStorageRoots(newRoots);
+      await set('storage-roots', newRoots);
+
+      setHasPermission(true);
       setIsScanning(true);
-      setTimeout(() => {
-        const deviceMedia = generateDeviceMedia();
-        setPendingFiles(deviceMedia);
-        setIsScanning(false);
-      }, 800); // Brief delay to feel like it's indexing
-    } else {
-      setPendingFiles([]);
+      
+      const allMedia = await scanDirectory(directoryHandle);
+      setFiles(prev => [...prev, ...allMedia]);
+      setIsScanning(false);
+      setPermissionStep('granted');
+    } catch (err: any) {
+      console.error("Permission error:", err);
+      if (err.name !== 'AbortError') {
+        setScanError(err.message || "Failed to access storage.");
+      }
     }
+  };
+
+  const handleAddStorageRoot = async () => {
+    try {
+      // @ts-ignore
+      const directoryHandle = await window.showDirectoryPicker({
+        mode: 'read'
+      });
+
+      const newRoots = [...storageRoots, directoryHandle];
+      setStorageRoots(newRoots);
+      await set('storage-roots', newRoots);
+
+      setIsScanning(true);
+      const allMedia = await scanDirectory(directoryHandle);
+      setFiles(prev => [...prev, ...allMedia]);
+      setIsScanning(false);
+    } catch (err: any) {
+      console.error("Error adding storage root:", err);
+    }
+  };
+
+  const handleRemoveStorageRoot = async (index: number) => {
+    const rootToRemove = storageRoots[index];
+    const newRoots = storageRoots.filter((_, i) => i !== index);
+    setStorageRoots(newRoots);
+    await set('storage-roots', newRoots);
+    
+    // Remove files associated with this root (simplified: just re-scan others or filter)
+    // For now, let's just trigger a full re-scan of remaining roots
+    const allMedia: MediaFile[] = [];
+    setIsScanning(true);
+    for (const root of newRoots) {
+      const rootMedia = await scanDirectory(root);
+      allMedia.push(...rootMedia);
+    }
+    setFiles(allMedia);
+    setIsScanning(false);
   };
 
   const handleBackFromSettings = () => {
     if (hasPermission) {
-      setFiles(pendingFiles);
       setPermissionStep('granted');
     } else {
       setPermissionStep('request');
@@ -334,6 +441,43 @@ export default function App() {
     }
   };
 
+  const handleShareSelection = async () => {
+    const selectedFiles = files.filter(f => selectedIds.has(f.id));
+    if (selectedFiles.length === 0) return;
+
+    try {
+      const shareData: ShareData = {
+        title: 'Shared Media',
+        text: `Sharing ${selectedFiles.length} items from Gallery`,
+      };
+
+      const filesToShare: File[] = [];
+      for (const file of selectedFiles) {
+        try {
+          const response = await fetch(file.url);
+          if (response.ok) {
+            const blob = await response.blob();
+            filesToShare.push(new File([blob], file.name, { type: blob.type }));
+          }
+        } catch (err) {
+          console.error('Error preparing file for share:', file.name, err);
+        }
+      }
+
+      if (filesToShare.length > 0 && navigator.canShare && navigator.canShare({ files: filesToShare })) {
+        shareData.files = filesToShare;
+      }
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        throw new Error('Web Share API not supported');
+      }
+    } catch (err) {
+      console.error('Error sharing selection:', err);
+    }
+  };
+
   return (
     <div className="bg-zinc-950 min-h-screen flex items-center justify-center sm:p-4">
       <div 
@@ -363,6 +507,7 @@ export default function App() {
           setCurrentFolderId(null);
           setSelectedIds(new Set());
         }}
+        onShare={handleShareSelection}
       />
 
       <div className="flex-1 overflow-y-auto relative">
@@ -511,6 +656,10 @@ export default function App() {
           onThemeChange={setTheme}
           accentColor={accentColor}
           onAccentColorChange={setAccentColor}
+          storageRoots={storageRoots}
+          onAddStorageRoot={handleAddStorageRoot}
+          onRemoveStorageRoot={handleRemoveStorageRoot}
+          onRefreshAll={handleRefreshAll}
           onClose={() => setIsSettingsOpen(false)} 
         />
       )}
