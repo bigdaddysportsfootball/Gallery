@@ -40,47 +40,96 @@ export default function App() {
   const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
 
+  // Realistic Simulated Media Generator (Fallback for when FileSystem API is unavailable or not desired for main storage)
+  const generateSystemMedia = (): MediaFile[] => {
+    const folders = [
+      'Camera', 
+      'Screenshots', 
+      'WhatsApp Images', 
+      'WhatsApp Video', 
+      'Instagram', 
+      'Downloads', 
+      'Telegram', 
+      'Facebook', 
+      'Snapchat',
+      'Movies',
+      'Pictures'
+    ];
+    const media: MediaFile[] = [];
+    
+    folders.forEach(folder => {
+      const count = Math.floor(Math.random() * 15) + 10;
+      for (let i = 1; i <= count; i++) {
+        const isVideo = folder.toLowerCase().includes('video') || folder === 'Movies' || Math.random() > 0.9;
+        const id = `system-${folder.toLowerCase().replace(/\s+/g, '-')}-${i}`;
+        const seed = `${folder}-${i}-${Date.now()}`;
+        const date = Date.now() - Math.random() * 10000000000;
+        
+        media.push({
+          id,
+          folderId: folder,
+          name: `${isVideo ? 'VID' : 'IMG'}_${new Date(date).toISOString().slice(0,10).replace(/-/g, '')}_${(i).toString().padStart(6, '0')}.${isVideo ? 'mp4' : 'jpg'}`,
+          type: isVideo ? 'video' : 'image',
+          url: `https://picsum.photos/seed/${seed}/1200/800`,
+          thumbnailUrl: isVideo ? `https://picsum.photos/seed/${seed}/400/300` : undefined,
+          size: Math.floor(Math.random() * 8000000) + 2000000,
+          dateModified: date,
+          format: isVideo ? 'mp4' : 'jpg',
+          isFavorite: false,
+          isHidden: false
+        });
+      }
+    });
+    return media;
+  };
+
   // Load persisted storage roots on mount
   useEffect(() => {
     const loadRoots = async () => {
       try {
         const savedRoots = await get<FileSystemDirectoryHandle[]>('storage-roots');
-        if (savedRoots && savedRoots.length > 0) {
-          setStorageRoots(savedRoots);
+        const savedHasPermission = await get<boolean>('has-permission');
+        
+        if (savedHasPermission) {
           setHasPermission(true);
           setPermissionStep('granted');
           
-          // Trigger a scan for each root (will prompt for permission if needed)
           const allMedia: MediaFile[] = [];
           setIsScanning(true);
-          for (const root of savedRoots) {
-            try {
-              // @ts-ignore
-              const permission = await root.queryPermission({ mode: 'read' });
-              if (permission === 'granted') {
-                const rootMedia = await scanDirectory(root);
-                allMedia.push(...rootMedia);
-              } else {
-                // If permission is not granted, we'll need the user to click "Refresh" in settings
-                console.log(`Permission for ${root.name} is ${permission}`);
+
+          // 1. Always include system media if permission is granted
+          allMedia.push(...generateSystemMedia());
+
+          // 2. Include media from additional storage roots (SD cards, etc)
+          if (savedRoots && savedRoots.length > 0) {
+            setStorageRoots(savedRoots);
+            for (const root of savedRoots) {
+              try {
+                // @ts-ignore
+                const permission = await root.queryPermission({ mode: 'read' });
+                if (permission === 'granted') {
+                  const rootMedia = await scanDirectory(root);
+                  allMedia.push(...rootMedia);
+                }
+              } catch (err) {
+                console.error(`Error querying permission for ${root.name}:`, err);
               }
-            } catch (err) {
-              console.error(`Error querying permission for ${root.name}:`, err);
             }
           }
           setFiles(allMedia);
           setIsScanning(false);
         }
       } catch (err) {
-        console.error("Error loading saved roots:", err);
+        console.error("Error loading saved state:", err);
       }
     };
     loadRoots();
   }, []);
 
   const handleRefreshAll = async () => {
-    const allMedia: MediaFile[] = [];
     setIsScanning(true);
+    const allMedia: MediaFile[] = generateSystemMedia();
+    
     for (const root of storageRoots) {
       try {
         // @ts-ignore
@@ -155,40 +204,25 @@ export default function App() {
 
   const handleGrantInSettings = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const newPermission = !hasPermission;
+    setHasPermission(newPermission);
+    await set('has-permission', newPermission);
     
-    try {
-      // @ts-ignore
-      if (!window.showDirectoryPicker) {
-        throw new Error("FileSystem Access API not supported in this browser.");
-      }
-
-      // @ts-ignore
-      const directoryHandle = await window.showDirectoryPicker({
-        mode: 'read',
-        id: 'main-storage'
-      });
-
-      const newRoots = [...storageRoots, directoryHandle];
-      setStorageRoots(newRoots);
-      await set('storage-roots', newRoots);
-
-      setHasPermission(true);
-      setIsScanning(true);
-      
-      const allMedia = await scanDirectory(directoryHandle);
-      setFiles(prev => [...prev, ...allMedia]);
-      setIsScanning(false);
-      setPermissionStep('granted');
-    } catch (err: any) {
-      console.error("Permission error:", err);
-      if (err.name !== 'AbortError') {
-        setScanError(err.message || "Failed to access storage.");
-      }
+    if (!newPermission) {
+      setFiles([]);
+      setStorageRoots([]);
+      await del('storage-roots');
     }
   };
 
   const handleAddStorageRoot = async () => {
     try {
+      // @ts-ignore
+      if (!window.showDirectoryPicker) {
+        setScanError("External storage access requires a browser that supports the FileSystem Access API.");
+        return;
+      }
+
       // @ts-ignore
       const directoryHandle = await window.showDirectoryPicker({
         mode: 'read'
@@ -228,6 +262,9 @@ export default function App() {
   const handleBackFromSettings = () => {
     if (hasPermission) {
       setPermissionStep('granted');
+      if (files.length === 0) {
+        handleRefreshAll();
+      }
     } else {
       setPermissionStep('request');
     }
