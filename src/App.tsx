@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MediaFile, Folder } from './types';
+import { Folder as FolderIcon } from 'lucide-react';
 import TopBar from './components/TopBar';
 import GalleryGrid from './components/GalleryGrid';
 import ImageViewer from './components/ImageViewer';
@@ -32,102 +33,86 @@ export default function App() {
   const [isVideoPlayerOpen, setIsVideoPlayerOpen] = useState(false);
   const [videoToPlay, setVideoToPlay] = useState<MediaFile | null>(null);
 
-  const [isScanning, setIsScanning] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
+  const [hasPermission, setHasPermission] = useState(false);
 
-  // Automatic Scan on Mount
-  useEffect(() => {
-    const performScan = async () => {
-      setIsScanning(true);
-      setScanProgress(0);
-      
-      // Simulate scanning progress
-      const steps = 10;
-      for (let i = 1; i <= steps; i++) {
-        await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 200));
-        setScanProgress(i * (100 / steps));
+  // Recursive Scanner Logic
+  const scanDirectory = async (handle: FileSystemDirectoryHandle, path = '') => {
+    const newFiles: MediaFile[] = [];
+    
+    try {
+      for await (const entry of (handle as any).values()) {
+        if (entry.kind === 'directory') {
+          const subFiles = await scanDirectory(entry, `${path}${entry.name}/`);
+          newFiles.push(...subFiles);
+        } else if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          const isImage = file.type.startsWith('image/');
+          const isVideo = file.type.startsWith('video/');
+          const isGif = file.type === 'image/gif';
+
+          if (isImage || isVideo) {
+            const url = URL.createObjectURL(file);
+            const folderName = path.split('/').filter(Boolean).pop() || 'Root';
+            
+            newFiles.push({
+              id: `device-${Date.now()}-${Math.random()}`,
+              folderId: folderName,
+              name: file.name,
+              type: isGif ? 'gif' : (isImage ? 'image' : 'video'),
+              url: url,
+              thumbnailUrl: isVideo ? url : undefined,
+              size: file.size,
+              dateModified: file.lastModified || Date.now(),
+              format: file.name.split('.').pop() || '',
+              isFavorite: false,
+              isHidden: false
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error scanning directory", err);
+    }
+    return newFiles;
+  };
+
+  const performAutoScan = async () => {
+    try {
+      // In a web environment, we need one initial "Grant Access" gesture
+      // In an APK (Capacitor/Cordova), this would be replaced by a native permission check
+      if (!('showDirectoryPicker' in window)) {
+        alert("Your browser/device does not support the File System Access API. Please use a modern browser or ensure the APK has appropriate permissions.");
+        return;
       }
 
-      // Populate with media
-      const initialMedia: MediaFile[] = [
-        {
-          id: '1',
-          name: 'Summer Vacation.jpg',
-          type: 'image',
-          url: 'https://picsum.photos/seed/summer/1200/800',
-          thumbnailUrl: 'https://picsum.photos/seed/summer/400/400',
-          size: 2400000,
-          dateModified: new Date('2023-07-15').getTime(),
-          folderId: 'f1',
-          format: 'jpg'
-        },
-        {
-          id: '2',
-          name: 'Mountain Hike.jpg',
-          type: 'image',
-          url: 'https://picsum.photos/seed/mountain/1200/800',
-          thumbnailUrl: 'https://picsum.photos/seed/mountain/400/400',
-          size: 1800000,
-          dateModified: new Date('2023-08-20').getTime(),
-          folderId: 'f1',
-          isFavorite: true,
-          format: 'jpg'
-        },
-        {
-          id: '3',
-          name: 'City Lights.mp4',
-          type: 'video',
-          url: 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-          thumbnailUrl: 'https://picsum.photos/seed/city/400/400',
-          size: 15200000,
-          dateModified: new Date('2023-09-05').getTime(),
-          duration: '09:56',
-          folderId: 'f2',
-          format: 'mp4'
-        },
-        {
-          id: '4',
-          name: 'Beach Sunset.gif',
-          type: 'gif',
-          url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJqZ3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6Z3R6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7TKMGpxx6BvYx4Yg/giphy.gif',
-          thumbnailUrl: 'https://picsum.photos/seed/beach/400/400',
-          size: 4100000,
-          dateModified: new Date('2023-10-12').getTime(),
-          folderId: 'f1',
-          format: 'gif'
-        },
-        {
-          id: '5',
-          name: 'Forest Path.jpg',
-          type: 'image',
-          url: 'https://picsum.photos/seed/forest/1200/800',
-          thumbnailUrl: 'https://picsum.photos/seed/forest/400/400',
-          size: 3100000,
-          dateModified: new Date('2023-11-20').getTime(),
-          folderId: 'f1',
-          format: 'jpg'
-        },
-        {
-          id: '6',
-          name: 'Family Dinner.jpg',
-          type: 'image',
-          url: 'https://picsum.photos/seed/dinner/1200/800',
-          thumbnailUrl: 'https://picsum.photos/seed/dinner/400/400',
-          size: 2900000,
-          dateModified: new Date('2023-12-24').getTime(),
-          folderId: 'f3',
-          format: 'jpg'
+      const directoryHandle = await (window as any).showDirectoryPicker();
+      
+      setIsScanning(true);
+      setScanProgress(0);
+      setHasPermission(true);
+
+      const allMedia = await scanDirectory(directoryHandle);
+      
+      // Simulate progress for UX
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 5;
+        setScanProgress(progress);
+        if (progress >= 100) {
+          clearInterval(interval);
+          setFiles(allMedia);
+          setIsScanning(false);
         }
-      ];
-
-      setFiles(initialMedia);
+      }, 30);
+    } catch (err) {
+      console.error("Scan cancelled or failed", err);
       setIsScanning(false);
-    };
+    }
+  };
 
-    performScan();
-  }, []);
-
-  // History Management for Back Button
+  // Revert hidden files on close (simulated by effect on mount)
   useEffect(() => {
     // Push an initial state to prevent immediate exit
     if (window.history.state?.root !== true) {
@@ -172,7 +157,6 @@ export default function App() {
     prevFolderId.current = currentFolderId;
   }, [openedFile, currentFolderId]);
 
-  // Revert hidden files on close (simulated by effect on mount)
   useEffect(() => {
     setShowHidden(false);
   }, []);
@@ -407,6 +391,25 @@ export default function App() {
           onRefresh={handleRefresh}
         />
       </div>
+
+      {/* Permission Overlay (APK Native Bridge Fallback) */}
+      {!hasPermission && !isScanning && files.length === 0 && (
+        <div className="fixed inset-0 z-[120] bg-app-surface flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-24 h-24 bg-app-accent/10 rounded-full flex items-center justify-center mb-6">
+            <FolderIcon size={48} className="text-app-accent" />
+          </div>
+          <h1 className="text-2xl font-bold text-app-text mb-2">Media Gallery</h1>
+          <p className="text-app-text-muted mb-8 max-w-xs">
+            To automatically find your photos and videos across all folders, please grant storage access.
+          </p>
+          <button 
+            onClick={performAutoScan}
+            className="w-full max-w-xs bg-app-accent text-white py-4 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-transform"
+          >
+            Start Device Scan
+          </button>
+        </div>
+      )}
 
       {/* Scanning Overlay */}
       {isScanning && (
