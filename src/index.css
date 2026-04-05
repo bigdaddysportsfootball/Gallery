@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-app-bg: var(--app-bg);
+  --color-app-surface: var(--app-surface);
+  --color-app-text: var(--app-text);
+  --color-app-text-muted: var(--app-text-muted);
+  --color-app-border: var(--app-border);
+  --color-app-accent: var(--app-accent);
+}
+
+:root {
+  --app-bg: #000000;
+  --app-surface: #18181b; /* zinc-900 */
+  --app-text: #ffffff;
+  --app-text-muted: #a1a1aa; /* zinc-400 */
+  --app-border: #27272a; /* zinc-800 */
+  --app-accent: #3b82f6; /* blue-500 */
+}
+
+[data-theme="light"] {
+  --app-bg: #f4f4f5; /* zinc-100 */
+  --app-surface: #ffffff;
+  --app-text: #09090b; /* zinc-950 */
+  --app-text-muted: #71717a; /* zinc-500 */
+  --app-border: #e4e4e7; /* zinc-200 */
+}
+
+/* Accent Colors */
+[data-accent="blue"] { --app-accent: #3b82f6; }
+[data-accent="red"] { --app-accent: #ef4444; }
+[data-accent="green"] { --app-accent: #22c55e; }
+[data-accent="purple"] { --app-accent: #a855f7; }
