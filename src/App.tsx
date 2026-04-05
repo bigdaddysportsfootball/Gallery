@@ -119,22 +119,28 @@ export default function App() {
   const handleGrantInSettings = async () => {
     setScanError(null);
     
-    // This triggers the actual system permission request
-    if ('showDirectoryPicker' in window) {
+    // Detect if we are on a mobile device (Android/iOS)
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // 1. Try the advanced Directory Picker ONLY on Desktop
+    if (!isMobile && 'showDirectoryPicker' in window) {
       try {
         const directoryHandle = await (window as any).showDirectoryPicker();
         setIsScanning(true);
         const allMedia = await scanDirectory(directoryHandle);
         finishScan(allMedia);
+        return;
       } catch (err: any) {
-        console.warn("Advanced picker failed", err);
-        if (err.name !== 'AbortError') {
-          setScanError("Permission denied by system.");
-        }
+        console.warn("Advanced picker failed, falling back...", err);
+        // Fall through to file input
       }
+    }
+
+    // 2. Fallback for Android/Mobile: Trigger the native system picker
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     } else {
-      // Fallback for mobile if directory picker is missing
-      fileInputRef.current?.click();
+      setScanError("System picker not available.");
     }
   };
 
@@ -452,18 +458,29 @@ export default function App() {
             <div className="bg-black w-full h-full flex flex-col animate-in fade-in duration-300">
               {/* Android Settings Header */}
               <div className="p-6 pt-12 flex items-center gap-6">
-                <button onClick={() => setPermissionStep('request')} className="p-2 -ml-2 text-white">
+                <button 
+                  onClick={() => {
+                    if (hasPermission) {
+                      setPermissionStep('granted');
+                    } else {
+                      setPermissionStep('request');
+                    }
+                  }} 
+                  className="p-2 -ml-2 text-white active:bg-white/10 rounded-full transition-colors"
+                >
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
                 <h2 className="text-[24px] font-normal text-white">All files access</h2>
               </div>
               
               <div className="flex-1 px-6 pt-4">
-                <div className="bg-[#1c1c1e] rounded-[1.5rem] p-5 flex items-center justify-between mb-8">
+                <div 
+                  onClick={handleGrantInSettings}
+                  className="bg-[#1c1c1e] rounded-[1.5rem] p-5 flex items-center justify-between mb-8 cursor-pointer active:bg-[#2c2c2e] transition-colors"
+                >
                   <span className="text-[18px] font-normal text-white">Allow access to manage all files</span>
                   <div 
-                    onClick={handleGrantInSettings}
-                    className={`w-[52px] h-[30px] rounded-full p-1 cursor-pointer transition-colors duration-300 ${hasPermission ? 'bg-[#007aff]' : 'bg-[#3a3a3c]'}`}
+                    className={`w-[52px] h-[30px] rounded-full p-1 transition-colors duration-300 ${hasPermission ? 'bg-[#007aff]' : 'bg-[#3a3a3c]'}`}
                   >
                     <div className={`w-[22px] h-[22px] bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-[22px]' : 'translate-x-0'}`}></div>
                   </div>
