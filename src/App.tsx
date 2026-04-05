@@ -36,11 +36,12 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Recursive Scanner Logic
+  // Recursive Scanner Logic for Desktop
   const scanDirectory = async (handle: FileSystemDirectoryHandle, path = '') => {
     const newFiles: MediaFile[] = [];
-    
     try {
       for await (const entry of (handle as any).values()) {
         if (entry.kind === 'directory') {
@@ -48,28 +49,8 @@ export default function App() {
           newFiles.push(...subFiles);
         } else if (entry.kind === 'file') {
           const file = await entry.getFile();
-          const isImage = file.type.startsWith('image/');
-          const isVideo = file.type.startsWith('video/');
-          const isGif = file.type === 'image/gif';
-
-          if (isImage || isVideo) {
-            const url = URL.createObjectURL(file);
-            const folderName = path.split('/').filter(Boolean).pop() || 'Root';
-            
-            newFiles.push({
-              id: `device-${Date.now()}-${Math.random()}`,
-              folderId: folderName,
-              name: file.name,
-              type: isGif ? 'gif' : (isImage ? 'image' : 'video'),
-              url: url,
-              thumbnailUrl: isVideo ? url : undefined,
-              size: file.size,
-              dateModified: file.lastModified || Date.now(),
-              format: file.name.split('.').pop() || '',
-              isFavorite: false,
-              isHidden: false
-            });
-          }
+          const mediaFile = processFile(file, path);
+          if (mediaFile) newFiles.push(mediaFile);
         }
       }
     } catch (err) {
@@ -78,37 +59,95 @@ export default function App() {
     return newFiles;
   };
 
-  const performAutoScan = async () => {
-    try {
-      // In a web environment, we need one initial "Grant Access" gesture
-      // In an APK (Capacitor/Cordova), this would be replaced by a native permission check
-      if (!('showDirectoryPicker' in window)) {
-        alert("Your browser/device does not support the File System Access API. Please use a modern browser or ensure the APK has appropriate permissions.");
-        return;
+  const processFile = (file: File, path: string): MediaFile | null => {
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const isGif = file.type === 'image/gif';
+
+    if (isImage || isVideo) {
+      const url = URL.createObjectURL(file);
+      const folderName = path.split('/').filter(Boolean).pop() || 'Storage';
+      
+      return {
+        id: `device-${Date.now()}-${Math.random()}`,
+        folderId: folderName,
+        name: file.name,
+        type: isGif ? 'gif' : (isImage ? 'image' : 'video'),
+        url: url,
+        thumbnailUrl: isVideo ? url : undefined,
+        size: file.size,
+        dateModified: file.lastModified || Date.now(),
+        format: file.name.split('.').pop() || '',
+        isFavorite: false,
+        isHidden: false
+      };
+    }
+    return null;
+  };
+
+  const handleManualFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+
+    setIsScanning(true);
+    setScanProgress(0);
+    setHasPermission(true);
+
+    const newMediaFiles: MediaFile[] = [];
+    Array.from(selectedFiles).forEach((file) => {
+      // On mobile, we try to get the path if available, otherwise use 'Media'
+      const path = (file as any).webkitRelativePath || '';
+      const media = processFile(file, path);
+      if (media) newMediaFiles.push(media);
+    });
+
+    finishScan(newMediaFiles);
+  };
+
+  const finishScan = (allMedia: MediaFile[]) => {
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += 5;
+      setScanProgress(progress);
+      if (progress >= 100) {
+        clearInterval(interval);
+        setFiles(allMedia);
+        setIsScanning(false);
       }
+    }, 20);
+  };
 
-      const directoryHandle = await (window as any).showDirectoryPicker();
-      
-      setIsScanning(true);
-      setScanProgress(0);
-      setHasPermission(true);
-
-      const allMedia = await scanDirectory(directoryHandle);
-      
-      // Simulate progress for UX
-      let progress = 0;
-      const interval = setInterval(() => {
-        progress += 5;
-        setScanProgress(progress);
-        if (progress >= 100) {
-          clearInterval(interval);
-          setFiles(allMedia);
+  const performAutoScan = async () => {
+    setScanError(null);
+    
+    // 1. Try the advanced Directory Picker (Desktop Chrome/Edge)
+    if ('showDirectoryPicker' in window) {
+      try {
+        const directoryHandle = await (window as any).showDirectoryPicker();
+        setIsScanning(true);
+        setScanProgress(0);
+        setHasPermission(true);
+        const allMedia = await scanDirectory(directoryHandle);
+        finishScan(allMedia);
+        return; // Success
+      } catch (err: any) {
+        console.warn("Advanced picker failed or blocked, trying fallback...", err);
+        // If it's a security error (common in iframes), we fall through to the input fallback
+        if (err.name === 'SecurityError' || err.name === 'NotAllowedError') {
+          // Fall through
+        } else {
+          setScanError(err.message || "Scan cancelled.");
           setIsScanning(false);
+          return;
         }
-      }, 30);
-    } catch (err) {
-      console.error("Scan cancelled or failed", err);
-      setIsScanning(false);
+      }
+    }
+
+    // 2. Fallback for Android/Mobile/Blocked Iframes: Trigger the hidden file input
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    } else {
+      setScanError("Your device does not support direct storage access. Please try a different browser.");
     }
   };
 
@@ -402,12 +441,29 @@ export default function App() {
           <p className="text-app-text-muted mb-8 max-w-xs">
             To automatically find your photos and videos across all folders, please grant storage access.
           </p>
+          
+          {scanError && (
+            <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+              {scanError}
+            </div>
+          )}
+
           <button 
             onClick={performAutoScan}
             className="w-full max-w-xs bg-app-accent text-white py-4 rounded-2xl font-bold text-lg shadow-lg active:scale-95 transition-transform"
           >
             Start Device Scan
           </button>
+
+          {/* Hidden input for mobile fallback */}
+          <input 
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            multiple
+            accept="image/*,video/*"
+            onChange={handleManualFileSelect}
+          />
         </div>
       )}
 
