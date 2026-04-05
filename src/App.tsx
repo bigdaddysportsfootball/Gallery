@@ -36,8 +36,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [hasPermission, setHasPermission] = useState(false);
-  const [permissionStep, setPermissionStep] = useState<'request' | 'type' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
-  const [selectedAccessType, setSelectedAccessType] = useState<'media' | 'all' | null>(null);
+  const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,34 +113,14 @@ export default function App() {
   };
 
   const handleRequestAllow = () => {
-    setPermissionStep('type');
+    setPermissionStep('settings');
   };
 
-  const handleSelectAccess = async (type: 'media' | 'all') => {
-    setSelectedAccessType(type);
-    if (type === 'all') {
-      setPermissionStep('settings');
-    } else {
-      // For media, we just trigger the picker which acts as the "Grant"
-      fileInputRef.current?.click();
-    }
-  };
-
-  const handleGrantInSettings = () => {
-    // This simulates the user toggling the slider in Android settings
-    if (selectedAccessType === 'all') {
-      if ('showDirectoryPicker' in window) {
-        handleSelectAccessFinal('all');
-      } else {
-        fileInputRef.current?.click();
-      }
-    }
-  };
-
-  const handleSelectAccessFinal = async (type: 'media' | 'all') => {
+  const handleGrantInSettings = async () => {
     setScanError(null);
     
-    if (type === 'all' && 'showDirectoryPicker' in window) {
+    // This triggers the actual system permission request
+    if ('showDirectoryPicker' in window) {
       try {
         const directoryHandle = await (window as any).showDirectoryPicker();
         setIsScanning(true);
@@ -152,9 +131,9 @@ export default function App() {
         if (err.name !== 'AbortError') {
           setScanError("Permission denied by system.");
         }
-        setPermissionStep('type');
       }
     } else {
+      // Fallback for mobile if directory picker is missing
       fileInputRef.current?.click();
     }
   };
@@ -441,117 +420,58 @@ export default function App() {
 
       {/* Native Permission Flow Overlay */}
       {permissionStep !== 'granted' && !isScanning && (
-        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-6 transition-all duration-500">
+        <div className="fixed inset-0 z-[120] bg-black flex items-center justify-center transition-all duration-300">
           {permissionStep === 'request' && (
-            <div className="bg-app-surface w-full max-w-[320px] rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in zoom-in duration-300">
-              <div className="w-16 h-16 bg-app-accent/10 rounded-2xl flex items-center justify-center mb-6 mx-auto">
-                <FolderIcon size={32} className="text-app-accent" />
-              </div>
-              <h2 className="text-xl font-bold text-app-text text-center mb-2">
-                Allow Gallery to access photos and videos on this device?
-              </h2>
-              <p className="text-app-text-muted text-sm text-center mb-8">
-                This allows the app to show your photos and videos and keep them organized.
-              </p>
-              <div className="flex flex-col gap-2">
-                <button 
-                  onClick={handleRequestAllow}
-                  className="w-full bg-app-accent text-white py-4 rounded-2xl font-bold text-lg active:scale-95 transition-transform"
-                >
-                  Allow
-                </button>
-                <button 
-                  onClick={() => setScanError("Access is required to use the gallery.")}
-                  className="w-full bg-transparent text-app-text-muted py-3 rounded-2xl font-medium"
-                >
-                  Don't allow
-                </button>
-              </div>
-            </div>
-          )}
-
-          {permissionStep === 'type' && (
-            <div className="bg-app-surface w-full max-w-[340px] rounded-[2.5rem] overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-500">
-              <div className="p-8 border-b border-app-border bg-app-accent/5">
-                <h2 className="text-2xl font-bold text-app-text">Grant Access</h2>
-                <p className="text-app-text-muted text-sm mt-2">
-                  Select the level of access you want to provide
-                </p>
-              </div>
-              <div className="p-4 flex flex-col gap-3">
-                <button 
-                  onClick={() => handleSelectAccess('media')}
-                  className="flex items-center gap-4 w-full p-5 rounded-3xl hover:bg-app-accent/5 active:bg-app-accent/10 transition-all text-left border border-transparent hover:border-app-accent/20"
-                >
-                  <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                    <FolderIcon size={24} className="text-blue-500" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-lg text-app-text">Photos & Videos</div>
-                    <div className="text-xs text-app-text-muted">Standard media access</div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => handleSelectAccess('all')}
-                  className="flex items-center gap-4 w-full p-5 rounded-3xl hover:bg-app-accent/5 active:bg-app-accent/10 transition-all text-left border border-transparent hover:border-app-accent/20"
-                >
-                  <div className="w-12 h-12 bg-purple-500/10 rounded-2xl flex items-center justify-center shrink-0">
-                    <FolderIcon size={24} className="text-purple-500" />
-                  </div>
-                  <div>
-                    <div className="font-bold text-lg text-app-text">All Files</div>
-                    <div className="text-xs text-app-text-muted">Full storage management (Recommended)</div>
-                  </div>
-                </button>
-              </div>
-              {scanError && (
-                <div className="px-8 pb-6 text-red-500 text-xs text-center font-medium">
-                  {scanError}
+            <div className="fixed inset-0 bg-black/60 flex items-end justify-center p-4 pb-8 animate-in fade-in duration-300">
+              <div className="bg-[#1c1c1e] w-full max-w-[380px] rounded-[2.5rem] p-8 shadow-2xl animate-in slide-in-from-bottom-full duration-500">
+                <div className="w-14 h-14 bg-[#2c2c2e] rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                 </div>
-              )}
+                <h2 className="text-[22px] font-semibold text-white text-center leading-tight mb-8 px-4">
+                  Allow Gallery to access photos and videos on this device?
+                </h2>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={handleRequestAllow}
+                    className="w-full bg-[#007aff] text-white py-4 rounded-[1.5rem] font-bold text-lg active:scale-[0.98] transition-transform"
+                  >
+                    Allow
+                  </button>
+                  <button 
+                    onClick={() => setScanError("Access is required to use the gallery.")}
+                    className="w-full bg-[#2c2c2e] text-[#98989d] py-4 rounded-[1.5rem] font-bold text-lg active:scale-[0.98] transition-transform"
+                  >
+                    Don't allow
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
           {permissionStep === 'settings' && (
-            <div className="bg-[#f8f9fa] dark:bg-[#121212] w-full h-full sm:max-w-[400px] sm:h-[800px] sm:rounded-[2.5rem] overflow-hidden shadow-2xl animate-in fade-in duration-500 flex flex-col">
-              {/* Android Settings Header Simulation */}
-              <div className="p-6 pt-12 flex items-center gap-4 border-b border-gray-200 dark:border-zinc-800">
-                <button onClick={() => setPermissionStep('type')} className="p-2">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            <div className="bg-black w-full h-full flex flex-col animate-in fade-in duration-300">
+              {/* Android Settings Header */}
+              <div className="p-6 pt-12 flex items-center gap-6">
+                <button onClick={() => setPermissionStep('request')} className="p-2 -ml-2 text-white">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 </button>
-                <h2 className="text-xl font-medium text-gray-900 dark:text-white">All files access</h2>
+                <h2 className="text-[24px] font-normal text-white">All files access</h2>
               </div>
               
-              <div className="flex-1 p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-app-accent rounded-xl flex items-center justify-center text-white font-bold">G</div>
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white text-lg">Gallery</div>
-                      <div className="text-sm text-gray-500">v1.0.0</div>
-                    </div>
-                  </div>
+              <div className="flex-1 px-6 pt-4">
+                <div className="bg-[#1c1c1e] rounded-[1.5rem] p-5 flex items-center justify-between mb-8">
+                  <span className="text-[18px] font-normal text-white">Allow access to manage all files</span>
                   <div 
                     onClick={handleGrantInSettings}
-                    className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors duration-300 ${hasPermission ? 'bg-app-accent' : 'bg-gray-300 dark:bg-zinc-700'}`}
+                    className={`w-[52px] h-[30px] rounded-full p-1 cursor-pointer transition-colors duration-300 ${hasPermission ? 'bg-[#007aff]' : 'bg-[#3a3a3c]'}`}
                   >
-                    <div className={`w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                    <div className={`w-[22px] h-[22px] bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-[22px]' : 'translate-x-0'}`}></div>
                   </div>
                 </div>
                 
-                <div className="space-y-4 text-sm text-gray-600 dark:text-zinc-400 leading-relaxed">
-                  <p>Allow this app to read, modify, and delete all files on this device or any connected storage volumes.</p>
-                  <p>If you allow this, the app can access files that aren't photos or videos, which may include sensitive information.</p>
+                <div className="px-1 space-y-6 text-[15px] text-[#98989d] leading-relaxed font-normal">
+                  <p>Allow this app to read, modify, and delete all files on this device or any connected storage volumes. If granted, app may access files without your explicit knowledge.</p>
                 </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-200 dark:border-zinc-800 flex justify-end">
-                <button 
-                  onClick={() => setPermissionStep('type')}
-                  className="px-6 py-2 text-app-accent font-bold"
-                >
-                  CANCEL
-                </button>
               </div>
             </div>
           )}
