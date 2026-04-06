@@ -236,28 +236,83 @@ export default function TopBar({
       </div>
 
       {passwordPrompt && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-app-surface p-6 rounded-lg w-80 border border-app-border">
-            <h3 className="text-lg font-medium mb-4 text-app-text">Enter Password</h3>
-            <div className="relative mb-4">
-              <input 
-                type={showPassword ? "text" : "password"} 
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
-                placeholder="Enter password"
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-app-text-muted hover:text-app-text"
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-app-surface p-6 rounded-xl w-full max-w-xs border border-app-border shadow-2xl animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold mb-2 text-app-text text-center">Unlock Hidden Files</h3>
+            <p className="text-xs text-app-text-muted text-center mb-6">Enter your 5-digit password</p>
+            
+            <div className="flex justify-center gap-3 mb-8">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "w-10 h-12 border-b-2 flex items-center justify-center text-app-text text-2xl transition-all duration-200",
+                    passwordInput.length > i ? "border-app-accent scale-110" : "border-app-border"
+                  )}
+                >
+                  {passwordInput.length > i ? "•" : ""}
+                </div>
+              ))}
             </div>
-            <div className="flex justify-end space-x-2">
-              <button onClick={() => { setPasswordPrompt(false); setShowPassword(false); }} className="px-4 py-2 text-app-text-muted hover:text-app-text">Cancel</button>
-              <button onClick={submitPassword} className="px-4 py-2 bg-app-accent text-white rounded hover:opacity-90">Unlock</button>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                <button
+                  key={num}
+                  onClick={() => {
+                    if (passwordInput.length < 5) {
+                      const newVal = passwordInput + num;
+                      setPasswordInput(newVal);
+                      if (newVal.length === 5) {
+                        if (newVal === appPassword) {
+                          onShowHiddenChange(true);
+                          setPasswordPrompt(false);
+                          setPasswordInput('');
+                        } else {
+                          if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+                          setTimeout(() => setPasswordInput(''), 500);
+                        }
+                      }
+                    }
+                  }}
+                  className="h-14 bg-app-bg border border-app-border rounded-xl text-app-text text-2xl font-semibold active:bg-app-border active:scale-95 transition-all"
+                >
+                  {num}
+                </button>
+              ))}
+              <button
+                onClick={() => setPasswordPrompt(false)}
+                className="h-14 text-app-text-muted text-sm font-medium active:scale-95 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (passwordInput.length < 5) {
+                    const newVal = passwordInput + "0";
+                    setPasswordInput(newVal);
+                    if (newVal.length === 5) {
+                      if (newVal === appPassword) {
+                        onShowHiddenChange(true);
+                        setPasswordPrompt(false);
+                        setPasswordInput('');
+                      } else {
+                        if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+                        setTimeout(() => setPasswordInput(''), 500);
+                      }
+                    }
+                  }
+                }}
+                className="h-14 bg-app-bg border border-app-border rounded-xl text-app-text text-2xl font-semibold active:bg-app-border active:scale-95 transition-all"
+              >
+                0
+              </button>
+              <button
+                onClick={() => setPasswordInput(passwordInput.slice(0, -1))}
+                className="h-14 text-app-text-muted flex items-center justify-center active:scale-95 transition-all"
+              >
+                <X size={24} />
+              </button>
             </div>
           </div>
         </div>

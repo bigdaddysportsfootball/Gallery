@@ -31,3 +31,7 @@
 [data-accent="red"] { --app-accent: #ef4444; }
 [data-accent="green"] { --app-accent: #22c55e; }
 [data-accent="purple"] { --app-accent: #a855f7; }
+[data-accent="orange"] { --app-accent: #f97316; }
+[data-accent="pink"] { --app-accent: #ec4899; }
+[data-accent="yellow"] { --app-accent: #eab308; }
+[data-accent="cyan"] { --app-accent: #06b6d4; }

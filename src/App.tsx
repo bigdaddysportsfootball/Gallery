@@ -11,7 +11,6 @@ import { get, set, del } from 'idb-keyval';
 
 export default function App() {
   const [files, setFiles] = useState<MediaFile[]>([]);
-  const [storageRoots, setStorageRoots] = useState<FileSystemDirectoryHandle[]>([]);
   
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -20,9 +19,9 @@ export default function App() {
   
   // Settings & Filters
   const [showHidden, setShowHidden] = useState(false);
-  const [appPassword, setAppPassword] = useState('1234');
+  const [appPassword, setAppPassword] = useState('12345');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [accentColor, setAccentColor] = useState<'blue' | 'red' | 'green' | 'purple'>('blue');
+  const [accentColor, setAccentColor] = useState<'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'yellow' | 'cyan'>('blue');
   const [columnCount, setColumnCount] = useState(3);
   const [filters, setFilters] = useState({ images: true, videos: true, gifs: true });
   const [sortConfig, setSortConfig] = useState({ by: 'date', asc: false });
@@ -37,21 +36,17 @@ export default function App() {
 
   const [isScanning, setIsScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
-  const [permissionStep, setPermissionStep] = useState<'request' | 'settings' | 'granted'>(files.length > 0 ? 'granted' : 'request');
   const [scanError, setScanError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load persisted storage roots on mount
   useEffect(() => {
     const loadRoots = async () => {
       try {
-        const savedRoots = await get<FileSystemDirectoryHandle[]>('storage-roots');
         const savedHasPermission = await get<boolean>('has-permission');
         const savedFiles = await get<MediaFile[]>('saved-files');
         
         if (savedHasPermission) {
           setHasPermission(true);
-          setPermissionStep('granted');
           
           let allMedia: MediaFile[] = [];
 
@@ -66,36 +61,15 @@ export default function App() {
             });
           }
 
-          // Include media from additional storage roots (SD cards, etc)
-          if (savedRoots && savedRoots.length > 0) {
-            setStorageRoots(savedRoots);
-            setIsScanning(true);
-            for (const root of savedRoots) {
-              try {
-                // @ts-ignore
-                const permission = await root.queryPermission({ mode: 'read' });
-                if (permission === 'granted') {
-                  const rootMedia = await scanDirectory(root);
-                  allMedia.push(...rootMedia);
-                }
-              } catch (err) {
-                console.error(`Error querying permission for ${root.name}:`, err);
-              }
-            }
-          }
           setFiles(allMedia);
           
-          // If permission is granted but no files found (e.g. first run of APK)
-          // we trigger the native scan
-          if (allMedia.length === 0) {
-            setIsScanning(true);
-            const nativeMedia = await fetchNativeMedia();
-            setFiles(nativeMedia);
-          }
-          
+          // Trigger native scan to ensure we have latest
+          setIsScanning(true);
+          const nativeMedia = await fetchNativeMedia();
+          setFiles(nativeMedia);
           setIsScanning(false);
         } else {
-          // Auto-request on native mount if not yet granted
+          // Auto-request on native mount if not yet granted (First-Run Logic)
           // @ts-ignore
           const isNative = window.Capacitor || window.cordova || window.androidBridge;
           if (isNative) {
@@ -118,90 +92,6 @@ export default function App() {
       set('saved-files', filesToSave);
     }
   }, [files]);
-
-  const handleRefreshAll = async (forcePicker = false) => {
-    console.log("Refresh All triggered", { forcePicker, storageRootsCount: storageRoots.length });
-    
-    setIsScanning(true);
-    const allMedia: MediaFile[] = [];
-    
-    // 1. Re-process existing manual files (from fallback picker)
-    const existingManualFiles = files.filter(f => f.file);
-    if (existingManualFiles.length > 0) {
-      for (const f of existingManualFiles) {
-        if (f.file) {
-          const media = await processFile(f.file, f.folderId);
-          if (media) allMedia.push(media);
-        }
-      }
-    }
-
-    // 2. Scan directory handles (if supported/available)
-    if (storageRoots.length > 0) {
-      for (const root of storageRoots) {
-        try {
-          // @ts-ignore
-          let permission = await root.queryPermission({ mode: 'read' });
-          if (permission !== 'granted') {
-            // @ts-ignore
-            permission = await root.requestPermission({ mode: 'read' });
-          }
-          
-          if (permission === 'granted') {
-            const rootMedia = await scanDirectory(root);
-            allMedia.push(...rootMedia);
-          }
-        } catch (err) {
-          console.error(`Error refreshing ${root.name}:`, err);
-        }
-      }
-    }
-    
-    // 3. Always fetch native/mock media if permission is granted
-    if (hasPermission) {
-      const nativeMedia = await fetchNativeMedia();
-      // Avoid duplicates if some were already in allMedia
-      const existingIds = new Set(allMedia.map(m => m.id));
-      const filteredNative = nativeMedia.filter(m => !existingIds.has(m.id));
-      allMedia.push(...filteredNative);
-    } else if (forcePicker && allMedia.length === 0) {
-      // 4. Trigger picker if forced and no files found
-      console.log("No storage roots and no manual files, triggering Add Storage Root");
-      handleAddStorageRoot();
-      setIsScanning(false);
-      return;
-    }
-    
-    if (allMedia.length > 0) {
-      setFiles(allMedia);
-    } else if (hasPermission) {
-      // If permission is on but no files found, clear the gallery
-      setFiles([]);
-    }
-    
-    setIsScanning(false);
-  };
-
-  // Recursive Scanner Logic
-  const scanDirectory = async (handle: FileSystemDirectoryHandle, path = '') => {
-    const newFiles: MediaFile[] = [];
-    try {
-      // @ts-ignore
-      for await (const entry of handle.values()) {
-        if (entry.kind === 'directory') {
-          const subFiles = await scanDirectory(entry, `${path}${entry.name}/`);
-          newFiles.push(...subFiles);
-        } else if (entry.kind === 'file') {
-          const file = await entry.getFile();
-          const mediaFile = await processFile(file, path);
-          if (mediaFile) newFiles.push(mediaFile);
-        }
-      }
-    } catch (err) {
-      console.error("Error scanning directory", err);
-    }
-    return newFiles;
-  };
 
   const processFile = async (file: File, path: string): Promise<MediaFile | null> => {
     const isImage = file.type.startsWith('image/');
@@ -230,10 +120,6 @@ export default function App() {
     return null;
   };
 
-  const handleRequestAllow = () => {
-    setPermissionStep('settings');
-  };
-
   const fetchNativeMedia = async (): Promise<MediaFile[]> => {
     // Check for native bridges (Capacitor, Cordova, or custom)
     // @ts-ignore
@@ -245,8 +131,13 @@ export default function App() {
         // Attempt to call native permission request if bridge supports it
         // @ts-ignore
         if (window.androidBridge && window.androidBridge.requestPermissions) {
+          // Request all 3 permissions at once for Full Access
           // @ts-ignore
-          await window.androidBridge.requestPermissions(['photos', 'videos', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO']);
+          await window.androidBridge.requestPermissions([
+            'READ_MEDIA_IMAGES', 
+            'READ_MEDIA_VIDEO', 
+            'READ_MEDIA_VISUAL_USER_SELECTED'
+          ]);
         }
 
         // @ts-ignore
@@ -286,23 +177,15 @@ export default function App() {
     
     if (isNative) {
       try {
-        // Capacitor specific request
-        // @ts-ignore
-        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Permissions) {
-          // @ts-ignore
-          await window.Capacitor.Plugins.Permissions.request({ name: 'photos' });
-        }
-        
         // Generic androidBridge request
         // @ts-ignore
         if (window.androidBridge && window.androidBridge.requestPermissions) {
+          // Request all 3 permissions at once for Full Access
           // @ts-ignore
           const granted = await window.androidBridge.requestPermissions([
-            'photos', 
-            'videos', 
             'READ_MEDIA_IMAGES', 
-            'READ_MEDIA_VIDEO',
-            'READ_EXTERNAL_STORAGE'
+            'READ_MEDIA_VIDEO', 
+            'READ_MEDIA_VISUAL_USER_SELECTED'
           ]);
           if (!granted) return;
         }
@@ -311,100 +194,17 @@ export default function App() {
       }
     }
 
-    const newPermission = !hasPermission;
-    setHasPermission(newPermission);
-    await set('has-permission', newPermission);
-    
-    if (newPermission) {
-      setPermissionStep('granted');
-      setIsScanning(true);
-      const media = await fetchNativeMedia();
-      setFiles(media);
-      setIsScanning(false);
-    } else {
-      setPermissionStep('request');
-      setFiles([]);
-    }
-  };
-
-  const handleManualFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files;
-    if (!selectedFiles || selectedFiles.length === 0) return;
-
+    setHasPermission(true);
+    await set('has-permission', true);
     setIsScanning(true);
-    const newMediaFiles: MediaFile[] = [];
-    
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      // @ts-ignore
-      const path = file.webkitRelativePath || '';
-      const media = await processFile(file, path);
-      if (media) newMediaFiles.push(media);
-    }
-
-    setFiles(prev => [...prev, ...newMediaFiles]);
-    setIsScanning(false);
-    setPermissionStep('granted');
-  };
-
-  const handleAddStorageRoot = async () => {
-    // @ts-ignore
-    if (window.showDirectoryPicker) {
-      try {
-        // @ts-ignore
-        const directoryHandle = await window.showDirectoryPicker({
-          mode: 'read'
-        });
-
-        const newRoots = [...storageRoots, directoryHandle];
-        setStorageRoots(newRoots);
-        await set('storage-roots', newRoots);
-
-        setIsScanning(true);
-        const allMedia = await scanDirectory(directoryHandle);
-        setFiles(prev => [...prev, ...allMedia]);
-        setIsScanning(false);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          console.error("Error adding storage root:", err);
-        }
-      }
-    } else {
-      // On Android APK, "Add Source" triggers a full native scan
-      setIsScanning(true);
-      const media = await fetchNativeMedia();
-      if (media.length > 0) {
-        setFiles(media);
-      } else {
-        fileInputRef.current?.click();
-      }
-      setIsScanning(false);
-    }
-  };
-
-  const handleRemoveStorageRoot = async (index: number) => {
-    const rootToRemove = storageRoots[index];
-    const newRoots = storageRoots.filter((_, i) => i !== index);
-    setStorageRoots(newRoots);
-    await set('storage-roots', newRoots);
-    
-    // Remove files associated with this root (simplified: just re-scan others or filter)
-    // For now, let's just trigger a full re-scan of remaining roots
-    const allMedia: MediaFile[] = [];
-    setIsScanning(true);
-    for (const root of newRoots) {
-      const rootMedia = await scanDirectory(root);
-      allMedia.push(...rootMedia);
-    }
-    setFiles(allMedia);
+    const media = await fetchNativeMedia();
+    setFiles(media);
     setIsScanning(false);
   };
 
   const handleBackFromSettings = () => {
     if (hasPermission) {
-      setPermissionStep('granted');
-    } else {
-      setPermissionStep('request');
+      // Nothing to do
     }
   };
 
@@ -727,28 +527,9 @@ export default function App() {
               handleOpenFile(item as MediaFile);
             }
           }}
-          onRefresh={() => handleRefreshAll(true)}
+          onRefresh={() => {}}
         />
       </div>
-
-      {/* Native Permission Flow Overlay */}
-      {permissionStep !== 'granted' && !isScanning && (
-        <div className="fixed inset-0 z-[120] bg-[#121212] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
-          <div className="w-24 h-24 bg-orange-500/10 rounded-full flex items-center justify-center mb-8">
-            <FolderIcon className="w-12 h-12 text-orange-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-4">Allow Media Access</h1>
-          <p className="text-gray-400 mb-8 max-w-sm">
-            PA Gallery needs permission to access your photos and videos. Please grant access in the following system dialog.
-          </p>
-          <button
-            onClick={() => handleGrantInSettings()}
-            className="w-full max-w-xs bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-all active:scale-95 shadow-lg shadow-orange-500/20"
-          >
-            Grant System Permission
-          </button>
-        </div>
-      )}
 
       {/* Silent Indexing Overlay (No progress bar, just a subtle spinner) */}
       {isScanning && (
@@ -757,20 +538,6 @@ export default function App() {
           <p className="text-app-text-muted font-medium">Indexing media...</p>
         </div>
       )}
-
-      {/* Hidden File Input for Mobile Fallback */}
-      <input 
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        multiple
-        accept="image/*,video/*"
-        // @ts-ignore
-        webkitdirectory=""
-        // @ts-ignore
-        directory=""
-        onChange={handleManualFileSelect}
-      />
 
       {openedFile && (
         <ImageViewer 
@@ -794,16 +561,8 @@ export default function App() {
           onThemeChange={setTheme}
           accentColor={accentColor}
           onAccentColorChange={setAccentColor}
-          storageRoots={storageRoots}
-          onAddStorageRoot={handleAddStorageRoot}
-          onRemoveStorageRoot={handleRemoveStorageRoot}
-          onRefreshAll={() => handleRefreshAll(true)}
           hasPermission={hasPermission}
           onPermissionToggle={handleGrantInSettings}
-          onManagePermissions={() => {
-            setIsSettingsOpen(false);
-            setPermissionStep('settings');
-          }}
           onClose={() => setIsSettingsOpen(false)} 
         />
       )}

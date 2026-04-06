@@ -56,16 +56,7 @@ export default function GalleryGrid({
     <div 
       ref={containerRef}
       className="h-full overflow-y-auto overscroll-y-contain"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
-      {refreshing && (
-        <div className="flex justify-center items-center py-4 text-app-text-muted">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-app-accent"></div>
-        </div>
-      )}
-      
       <div 
         className="grid gap-1 p-1" 
         style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
@@ -85,15 +76,6 @@ export default function GalleryGrid({
       {items.length === 0 && (
         <div className="flex flex-col items-center justify-center h-64 text-app-text-muted p-8 text-center">
           <p className="mb-4">No items found</p>
-          <button 
-            onClick={onRefresh}
-            className="px-6 py-2 bg-app-accent text-white rounded-full font-medium hover:opacity-90 transition-opacity shadow-lg"
-          >
-            Refresh Gallery
-          </button>
-          <p className="mt-4 text-xs max-w-xs">
-            If your media isn't showing, make sure you've added a storage source in Settings.
-          </p>
         </div>
       )}
     </div>

@@ -6,8 +6,8 @@ interface SettingsModalProps {
   onPasswordChange?: (pw: string) => void;
   theme: 'dark' | 'light';
   onThemeChange: (theme: 'dark' | 'light') => void;
-  accentColor: 'blue' | 'red' | 'green' | 'purple';
-  onAccentColorChange: (color: 'blue' | 'red' | 'green' | 'purple') => void;
+  accentColor: 'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'yellow' | 'cyan';
+  onAccentColorChange: (color: 'blue' | 'red' | 'green' | 'purple' | 'orange' | 'pink' | 'yellow' | 'cyan') => void;
   storageRoots?: FileSystemDirectoryHandle[];
   onAddStorageRoot?: () => void;
   onRemoveStorageRoot?: (index: number) => void;
@@ -19,7 +19,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ 
-  appPassword = '1234', 
+  appPassword = '12345', 
   onPasswordChange, 
   theme,
   onThemeChange,
@@ -42,20 +42,66 @@ export default function SettingsModal({
   const handlePasswordChangeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (oldPassword !== appPassword) {
-      // Removed alert as per user request
       return;
     }
-    if (newPassword.length < 4) {
-      // Removed alert as per user request
+    if (newPassword.length < 5) {
       return;
     }
     if (onPasswordChange) {
       onPasswordChange(newPassword);
-      // Removed alert as per user request
       setIsChangingPassword(false);
       setOldPassword('');
       setNewPassword('');
     }
+  };
+
+  const NumericKeypad = ({ value, onChange, onComplete }: { value: string, onChange: (val: string) => void, onComplete: () => void }) => {
+    const handleNumberClick = (num: string) => {
+      if (value.length < 5) {
+        onChange(value + num);
+      }
+    };
+
+    const handleBackspace = () => {
+      onChange(value.slice(0, -1));
+    };
+
+    return (
+      <div className="grid grid-cols-3 gap-2 mt-4">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+          <button
+            key={num}
+            type="button"
+            onClick={() => handleNumberClick(num.toString())}
+            className="h-12 bg-app-bg border border-app-border rounded-lg text-app-text text-xl font-medium active:bg-app-border transition-colors"
+          >
+            {num}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={handleBackspace}
+          className="h-12 bg-app-bg border border-app-border rounded-lg text-app-text text-sm font-medium active:bg-app-border transition-colors"
+        >
+          DEL
+        </button>
+        <button
+          type="button"
+          onClick={() => handleNumberClick('0')}
+          className="h-12 bg-app-bg border border-app-border rounded-lg text-app-text text-xl font-medium active:bg-app-border transition-colors"
+        >
+          0
+        </button>
+        <button
+          type="button"
+          disabled={value.length < 5}
+          onClick={onComplete}
+          className="h-12 bg-app-accent text-white rounded-lg text-sm font-bold active:opacity-80 transition-opacity disabled:opacity-50"
+        >
+          OK
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -83,93 +129,28 @@ export default function SettingsModal({
               </label>
               <label className="flex items-center justify-between text-app-text">
                 <span>Accent Color</span>
-                <div className="flex space-x-2">
-                  {(['blue', 'red', 'green', 'purple'] as const).map(color => (
-                    <button
-                      key={color}
-                      onClick={() => onAccentColorChange(color)}
-                      className={`w-6 h-6 rounded-full bg-${color}-500 ${accentColor === color ? 'ring-2 ring-app-text' : ''}`}
-                    />
-                  ))}
+                <div className="flex flex-wrap gap-2 justify-end max-w-[200px]">
+                  {(['blue', 'red', 'green', 'purple', 'orange', 'pink', 'yellow', 'cyan'] as const).map(color => {
+                    const colorMap: Record<string, string> = {
+                      blue: 'bg-blue-500',
+                      red: 'bg-red-500',
+                      green: 'bg-green-500',
+                      purple: 'bg-purple-500',
+                      orange: 'bg-orange-500',
+                      pink: 'bg-pink-500',
+                      yellow: 'bg-yellow-500',
+                      cyan: 'bg-cyan-500'
+                    };
+                    return (
+                      <button
+                        key={color}
+                        onClick={() => onAccentColorChange(color)}
+                        className={`w-6 h-6 rounded-full ${colorMap[color]} ${accentColor === color ? 'ring-2 ring-app-text' : ''}`}
+                      />
+                    );
+                  })}
                 </div>
               </label>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium text-app-text-muted uppercase tracking-wider mb-3">Permissions</h3>
-            <div className="space-y-3">
-              <div 
-                className="flex items-center justify-between p-3 bg-app-bg/50 rounded-lg border border-app-border cursor-pointer active:bg-app-border/50 transition-colors"
-                onClick={onPermissionToggle}
-              >
-                <div className="flex flex-col">
-                  <span className="text-app-text font-medium">Photos and videos</span>
-                  <span className="text-[11px] text-app-text-muted">Allow app to access all media on device</span>
-                </div>
-                <div 
-                  className={`w-[44px] h-[24px] rounded-full p-1 transition-colors duration-300 ${hasPermission ? 'bg-[#f86734]' : 'bg-app-border'}`}
-                >
-                  <div className={`w-[16px] h-[16px] bg-white rounded-full shadow-md transform transition-transform duration-300 ${hasPermission ? 'translate-x-[20px]' : 'translate-x-0'}`}></div>
-                </div>
-              </div>
-              <button 
-                onClick={onManagePermissions}
-                className="w-full py-2 text-sm text-app-accent hover:bg-app-accent/10 rounded transition-colors border border-app-accent/20"
-              >
-                Manage App Permissions
-              </button>
-              <p className="text-[11px] text-app-text-muted leading-tight">
-                This permission is required for the app to automatically find and display your media. If disabled, you must manually add folders using "Add Source".
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-medium text-app-text-muted uppercase tracking-wider mb-3">Storage Management</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-app-text">Storage Sources</span>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={onRefreshAll}
-                    className="px-3 py-1 bg-app-bg border border-app-border text-app-text rounded-lg text-sm font-medium hover:bg-app-border"
-                  >
-                    Refresh All
-                  </button>
-                  <button 
-                    onClick={onAddStorageRoot}
-                    className="flex items-center gap-1 px-3 py-1 bg-app-accent text-white rounded-lg text-sm font-medium hover:opacity-90"
-                  >
-                    <Plus size={16} />
-                    Add Source
-                  </button>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                {storageRoots.length === 0 ? (
-                  <p className="text-xs text-app-text-muted italic">No storage sources added yet.</p>
-                ) : (
-                  storageRoots.map((root, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-app-bg/50 rounded-lg border border-app-border">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <HardDrive size={18} className="text-app-accent shrink-0" />
-                        <span className="text-sm text-app-text truncate">{root.name || 'Main Storage'}</span>
-                      </div>
-                      <button 
-                        onClick={() => onRemoveStorageRoot?.(index)}
-                        className="p-1 text-red-500 hover:bg-red-500/10 rounded transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              <p className="text-[11px] text-app-text-muted leading-tight">
-                On Android, use "Add Source" to select your media folders. The app will remember these files and you can "Refresh All" to re-index them.
-              </p>
             </div>
           </div>
 
@@ -185,41 +166,52 @@ export default function SettingsModal({
                   {isChangingPassword ? 'Cancel' : 'Change'}
                 </button>
               </div>
-              <p className="text-xs text-app-text-muted">Password is required to view hidden files. Hidden files are automatically hidden when the app is closed.</p>
+              <p className="text-xs text-app-text-muted">Password is required to view hidden files. Must be 5 digits.</p>
               
               {isChangingPassword && (
-                <form onSubmit={handlePasswordChangeSubmit} className="mt-4 p-4 bg-app-bg/50 rounded-lg border border-app-border">
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <input 
-                        type={showPasswords ? "text" : "password"} 
-                        placeholder="Current Password" 
-                        value={oldPassword}
-                        onChange={(e) => setOldPassword(e.target.value)}
-                        className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
-                      />
-                      <button 
-                        type="button"
-                        onClick={() => setShowPasswords(!showPasswords)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-app-text-muted hover:text-app-text"
-                      >
-                        {showPasswords ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
+                <div className="mt-4 p-4 bg-app-bg/50 rounded-lg border border-app-border">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs text-app-text-muted">Current Password ({oldPassword.length}/5)</label>
+                      <div className="flex justify-center gap-2">
+                        {[0, 1, 2, 3, 4].map(i => (
+                          <div key={i} className={`w-8 h-10 border-b-2 flex items-center justify-center text-app-text text-xl ${oldPassword.length > i ? 'border-app-accent' : 'border-app-border'}`}>
+                            {oldPassword.length > i ? '•' : ''}
+                          </div>
+                        ))}
+                      </div>
+                      {oldPassword.length === 5 && oldPassword !== appPassword && (
+                        <p className="text-[10px] text-red-500 text-center">Incorrect current password</p>
+                      )}
                     </div>
-                    <div className="relative">
-                      <input 
-                        type={showPasswords ? "text" : "password"} 
-                        placeholder="New Password" 
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full bg-app-bg border border-app-border rounded p-2 text-app-text outline-none focus:border-app-accent pr-10"
-                      />
-                    </div>
-                    <button type="submit" className="w-full py-2 bg-app-accent text-white rounded hover:opacity-90 font-medium">
-                      Save New Password
-                    </button>
+
+                    {oldPassword === appPassword && (
+                      <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
+                        <label className="text-xs text-app-text-muted">New Password ({newPassword.length}/5)</label>
+                        <div className="flex justify-center gap-2">
+                          {[0, 1, 2, 3, 4].map(i => (
+                            <div key={i} className={`w-8 h-10 border-b-2 flex items-center justify-center text-app-text text-xl ${newPassword.length > i ? 'border-app-accent' : 'border-app-border'}`}>
+                              {newPassword.length > i ? '•' : ''}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <NumericKeypad 
+                      value={oldPassword === appPassword ? newPassword : oldPassword}
+                      onChange={oldPassword === appPassword ? setNewPassword : setOldPassword}
+                      onComplete={() => {
+                        if (oldPassword === appPassword && newPassword.length === 5) {
+                          onPasswordChange?.(newPassword);
+                          setIsChangingPassword(false);
+                          setOldPassword('');
+                          setNewPassword('');
+                        }
+                      }}
+                    />
                   </div>
-                </form>
+                </div>
               )}
             </div>
           </div>
